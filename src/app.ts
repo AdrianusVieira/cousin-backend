@@ -3,6 +3,8 @@ import Fastify from "fastify";
 import { ZodError } from "zod";
 import { ApiError } from "./lib/errors.js";
 import { requireAuth } from "./middleware/auth.js";
+import { registerCategoryRoutes } from "./modules/categories/categories.routes.js";
+import { registerSourceRoutes } from "./modules/sources/sources.routes.js";
 import { registerWalletRoutes } from "./modules/wallets/wallets.routes.js";
 
 export function buildApp() {
@@ -36,6 +38,8 @@ export function buildApp() {
   app.register(
     async (api) => {
       api.addHook("onRequest", requireAuth);
+      await registerCategoryRoutes(api);
+      await registerSourceRoutes(api);
       await registerWalletRoutes(api);
     },
     { prefix: "/api" },
