@@ -4,11 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Greenfield. The repo currently contains only `README.md` — **no source code, no `package.json`, no build/test tooling exists yet.** This is the backend for "cou$in", a personal (single-owner) finance-tracking app. The design is fully specified in companion docs (see "Source-of-truth specs"); implementation starts from those.
+This is the backend for "cou$in", a personal (single-owner) finance-tracking app. Stack: **Node.js + TypeScript**, **Fastify**, PostgreSQL via **Supabase** (accessed directly with `pg`), **Zod** for validation, **Vitest** for tests. The design is fully specified in companion docs (see "Source-of-truth specs").
+
+Implemented so far: project scaffolding, the full DB schema (migrations under `src/db/migrations/`), the shared transaction-classification/balance-delta logic (`src/lib/transactions.ts`), and the Wallets module (CRUD, archive/unarchive, manual-adjustment-on-balance-edit). All other entities/endpoints from `api-contracts.md` are not yet implemented.
 
 ## Commands
 
-No build system is configured yet, so there are no build/lint/test commands to run. Intended stack (per specs): **Node.js + TypeScript**, PostgreSQL via **Supabase**. When you scaffold the project, replace this section with the real install / dev / build / lint / typecheck / test (all + single) / DB-migration invocations. Do not infer commands until `package.json` and tooling exist.
+Package manager is **pnpm** (run via `corepack pnpm ...` if pnpm isn't installed globally).
+
+- Install deps: `pnpm install`
+- Dev server (watch mode): `pnpm dev`
+- Build: `pnpm build`
+- Typecheck: `pnpm typecheck`
+- Lint: `pnpm lint`
+- Run all tests: `pnpm test`
+- Run a single test file: `pnpm test src/lib/money.test.ts`
+- Watch tests: `pnpm test:watch`
+- Run DB migrations (requires `DATABASE_URL` in `.env`, copy from `.env.example`): `pnpm migrate`
 
 ## What this repo is
 
