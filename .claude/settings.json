@@ -10,7 +10,21 @@
       "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/**)",
       "Bash(pnpm typecheck *)",
       "Bash(cd /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend && corepack pnpm typecheck 2>&1)",
-      "Bash(cd /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend && corepack pnpm test 2>&1)"
+      "Bash(cd /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend && corepack pnpm test 2>&1)",
+      "Bash(ls \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/\")",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/src//**)",
+      "Bash(grep -n \"estimated\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/user-stories.md\" | head -30)",
+      "Bash(grep -n \"estimated\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/entities.md\" | head -20)",
+      "Bash(grep -n -A5 \"estimated_value\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/entities.md\" | head -30)",
+      "Bash(grep -n \"export async function create\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/modules/revenues/revenues.repository.ts\")",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/src/modules/revenues/**)",
+      "Bash(cd \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend\" && pnpm typecheck 2>&1)",
+      "Bash(npx --yes tsc --noEmit)",
+      "Bash(npx tsc *)",
+      "Bash(cd \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend\" && npx tsc --noEmit 2>&1)",
+      "Bash(grep -n \"export async function\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/modules/wallets/wallets.service.ts\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/modules/sources/sources.service.ts\" \"/Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/modules/categories/categories.service.ts\" 2>&1)",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/src/modules/wallets/**)",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend//**)"
     ]
   }
 }

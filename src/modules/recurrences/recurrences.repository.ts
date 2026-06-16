@@ -180,3 +180,88 @@ export async function updateRecurrence(
 export async function deleteRecurrence(db: Pool | PoolClient, id: string): Promise<void> {
   await db.query(`delete from recurrences where id = $1`, [id]);
 }
+
+export interface WindowJobRow {
+  id: string;
+  interval_unit: IntervalUnit;
+  interval_value: number;
+  recurrent_day: number;
+  recurrent_month: number | null;
+  is_variable: boolean;
+  type: "bill" | "revenue";
+  max_term: string | null;
+  future_count: string;
+  total_count: string;
+  template_name: string | null;
+  template_value: string | null;
+  template_source_id: string | null;
+  template_description: string | null;
+  avg_actual: string | null;
+}
+
+export async function findRecurrencesForWindowJob(
+  db: Pool | PoolClient,
+): Promise<WindowJobRow[]> {
+  const { rows } = await db.query<WindowJobRow>(`
+    with bill_agg as (
+      select
+        b.recurrence_id,
+        to_char(max(b.term), 'YYYY-MM-DD') as max_term,
+        count(*) filter (where b.term >= current_date) as future_count,
+        count(*) as total_count,
+        (array_agg(b.name order by b.term desc))[1] as template_name,
+        (array_agg(b.value::text order by b.term desc))[1] as template_value,
+        (array_agg(b.source_id::text order by b.term desc))[1] as template_source_id,
+        (array_agg(b.description order by b.term desc))[1] as template_description
+      from bills b
+      where b.recurrence_id is not null
+      group by b.recurrence_id
+    ),
+    bill_avg as (
+      select b.recurrence_id, avg(t.amount)::text as avg_actual
+      from bills b
+      join transactions t on t.to_type = 'bill' and t.to_id = b.id
+      where b.recurrence_id is not null
+      group by b.recurrence_id
+    ),
+    revenue_agg as (
+      select
+        rv.recurrence_id,
+        to_char(max(rv.term), 'YYYY-MM-DD') as max_term,
+        count(*) filter (where rv.term >= current_date) as future_count,
+        count(*) as total_count,
+        (array_agg(rv.name order by rv.term desc))[1] as template_name,
+        (array_agg(rv.value::text order by rv.term desc))[1] as template_value,
+        (array_agg(rv.source_id::text order by rv.term desc))[1] as template_source_id,
+        (array_agg(rv.description order by rv.term desc))[1] as template_description
+      from revenues rv
+      where rv.recurrence_id is not null
+      group by rv.recurrence_id
+    ),
+    revenue_avg as (
+      select rv.recurrence_id, avg(t.amount)::text as avg_actual
+      from revenues rv
+      join transactions t on t.from_type = 'revenue' and t.from_id = rv.id
+      where rv.recurrence_id is not null
+      group by rv.recurrence_id
+    )
+    select
+      r.id, r.interval_unit, r.interval_value, r.recurrent_day, r.recurrent_month,
+      r.is_variable,
+      case when ba.recurrence_id is not null then 'bill' else 'revenue' end as type,
+      coalesce(ba.max_term, ra.max_term) as max_term,
+      coalesce(ba.future_count, ra.future_count, 0)::text as future_count,
+      coalesce(ba.total_count, ra.total_count, 0)::text as total_count,
+      coalesce(ba.template_name, ra.template_name) as template_name,
+      coalesce(ba.template_value, ra.template_value) as template_value,
+      coalesce(ba.template_source_id, ra.template_source_id) as template_source_id,
+      coalesce(ba.template_description, ra.template_description) as template_description,
+      coalesce(bavg.avg_actual, ravg.avg_actual) as avg_actual
+    from recurrences r
+    left join bill_agg ba on ba.recurrence_id = r.id
+    left join bill_avg bavg on bavg.recurrence_id = r.id
+    left join revenue_agg ra on ra.recurrence_id = r.id
+    left join revenue_avg ravg on ravg.recurrence_id = r.id
+  `);
+  return rows;
+}
