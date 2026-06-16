@@ -1,5 +1,5 @@
 import { pool } from "../../db/pool.js";
-import { subtractMonths, toISODate, today } from "../../lib/date.js";
+import { toISODate, today } from "../../lib/date.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { findBillsByRecurrenceId } from "../bills/bills.repository.js";
 import { rowToBill } from "../bills/bills.types.js";

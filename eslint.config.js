@@ -12,10 +12,6 @@ export default [
       parserOptions: {
         project: "./tsconfig.json",
       },
-      globals: {
-        process: "readonly",
-        console: "readonly",
-      },
     },
     plugins: {
       "@typescript-eslint": tseslint,
@@ -23,10 +19,13 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      // TypeScript already resolves identifiers; no-undef is redundant and
+      // misfires on Node globals (setInterval, Buffer, NodeJS, ...).
+      "no-undef": "off",
     },
   },
   prettier,
   {
-    ignores: ["dist/", "node_modules/"],
+    ignores: ["dist/", "node_modules/", "*.config.ts", "*.config.js"],
   },
 ];

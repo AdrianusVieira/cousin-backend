@@ -1,6 +1,8 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { ZodError } from "zod";
+import { env } from "./config/env.js";
+import { pool } from "./db/pool.js";
 import { ApiError } from "./lib/errors.js";
 import { requireAuth } from "./middleware/auth.js";
 import { registerBillRoutes } from "./modules/bills/bills.routes.js";
@@ -16,7 +18,21 @@ import { registerWalletRoutes } from "./modules/wallets/wallets.routes.js";
 export function buildApp() {
   const app = Fastify({ logger: true });
 
-  app.register(cors);
+  const corsOrigin = env.CORS_ORIGIN
+    ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+    : true;
+  app.register(cors, { origin: corsOrigin });
+
+  app.get("/health", async (_request, reply) => {
+    try {
+      await pool.query("select 1");
+      return { status: "ok" };
+    } catch (error) {
+      app.log.error({ err: error }, "health check failed");
+      reply.status(503);
+      return { status: "error" };
+    }
+  });
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ApiError) {
