@@ -54,7 +54,7 @@ export async function insertManualAdjustment(
 // Full transaction queries (with name resolution for from/to endpoints)
 // ---------------------------------------------------------------------------
 
-const FULL_TXN_SELECT = `
+export const FULL_TXN_SELECT = `
   select
     t.id,
     t.amount::text as amount,
@@ -301,4 +301,27 @@ export async function updateTransaction(
 
 export async function deleteTransaction(db: Pool | PoolClient, id: string): Promise<void> {
   await db.query(`delete from transactions where id = $1`, [id]);
+}
+
+export async function findTransactionsByIds(
+  db: Pool | PoolClient,
+  ids: string[],
+): Promise<FullTransactionRow[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await db.query<FullTransactionRow>(
+    `${FULL_TXN_SELECT} where t.id = any($1::uuid[]) order by t.date desc, t.id desc`,
+    [ids],
+  );
+  return rows;
+}
+
+export async function setTransactionsSettled(
+  db: Pool | PoolClient,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db.query(
+    `update transactions set settled = true where id = any($1::uuid[])`,
+    [ids],
+  );
 }

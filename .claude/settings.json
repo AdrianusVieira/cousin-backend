@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -n '160,295p' /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/api-contracts.md)",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/reference-files/**)",
+      "Bash(ls /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/src/modules/)",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/src/modules//**)",
+      "Bash(grep -n \"recurrence\\\\|bill\\\\|revenue\\\\|estimated_value\" /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/db-schema.md | head -60)",
+      "Bash(grep -n -A 30 \"dashboard\\\\|Dashboard\" /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend/reference-files/user-stories.md | head -80)",
+      "Read(//Users/4089dtidigital/Documents/cou$in/cousin-backend/**)",
+      "Bash(pnpm typecheck *)",
+      "Bash(cd /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend && corepack pnpm typecheck 2>&1)",
+      "Bash(cd /Users/4089dtidigital/Documents/cou\\\\$in/cousin-backend && corepack pnpm test 2>&1)"
+    ]
+  }
+}
