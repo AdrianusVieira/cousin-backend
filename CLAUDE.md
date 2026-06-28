@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the backend for "cou$in", a personal (single-owner) finance-tracking app. Stack: **Node.js + TypeScript**, **Fastify**, PostgreSQL via **Supabase** (accessed directly with `pg`), **Zod** for validation, **Vitest** for tests. The design is fully specified in companion docs (see "Source-of-truth specs").
 
-Implemented so far: project scaffolding, the full DB schema (migrations under `src/db/migrations/`), the shared transaction-classification/balance-delta logic (`src/lib/transactions.ts`), and the Wallets module (CRUD, archive/unarchive, manual-adjustment-on-balance-edit). All other entities/endpoints from `api-contracts.md` are not yet implemented.
+The full surface from `api-contracts.md` is implemented and wired in `src/app.ts`: bills, categories, credit, dashboard, recurrences, revenues, sources, transactions, wallets, plus the recurrence-windowing background job (`src/jobs/recurrence-window.ts`). The DB schema lives in `src/db/migrations/` and shared pure logic in `src/lib/` (`transactions.ts`, `recurrences.ts`, `money.ts`, `date.ts`). Test coverage is uneven — service tests exist for bills, credit, dashboard, and wallets, but not for transactions, recurrences, sources, revenues, or categories.
+
+### Module layout
+
+Each entity is a folder under `src/modules/<entity>/` with a fixed pipeline: `*.routes.ts` (Fastify route + Zod parse of params/query/body) → `*.service.ts` (business logic, multi-statement DB transactions, computed fields) → `*.repository.ts` (parameterized SQL only) → `*.types.ts` (row ↔ camelCase DTO mapping). Routes never touch SQL; repositories never hold business rules. The `requireAuth` hook and the central error handler (mapping `ApiError` → status/body and `ZodError` → `422` with a `fields` map) live in `src/app.ts`.
 
 ## Commands
 
