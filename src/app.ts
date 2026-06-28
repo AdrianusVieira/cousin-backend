@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { env } from "./config/env.js";
 import { pool } from "./db/pool.js";
 import { ApiError } from "./lib/errors.js";
+import { runRecurrenceWindowJob } from "./jobs/recurrence-window.js";
 import { requireAuth } from "./middleware/auth.js";
 import { registerBillRoutes } from "./modules/bills/bills.routes.js";
 import { registerCategoryRoutes } from "./modules/categories/categories.routes.js";
@@ -69,6 +70,11 @@ export function buildApp() {
       await registerSourceRoutes(api);
       await registerTransactionRoutes(api);
       await registerWalletRoutes(api);
+
+      api.post("/jobs/recurrence-window", async (_request, reply) => {
+        await runRecurrenceWindowJob();
+        reply.status(204);
+      });
     },
     { prefix: "/api" },
   );

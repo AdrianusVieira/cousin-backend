@@ -5,10 +5,6 @@ import { runRecurrenceWindowJob } from "./jobs/recurrence-window.js";
 
 const app = buildApp();
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-
-let jobTimer: NodeJS.Timeout | undefined;
-
 app
   .listen({ port: env.PORT, host: "0.0.0.0" })
   .then((address) => {
@@ -16,11 +12,6 @@ app
     runRecurrenceWindowJob().catch((err) =>
       app.log.error({ err }, "recurrence-window job failed on startup"),
     );
-    jobTimer = setInterval(() => {
-      runRecurrenceWindowJob().catch((err) =>
-        app.log.error({ err }, "recurrence-window job failed"),
-      );
-    }, ONE_DAY_MS);
   })
   .catch((error) => {
     app.log.error(error);
@@ -29,8 +20,6 @@ app
 
 async function shutdown(signal: string) {
   app.log.info(`received ${signal}, shutting down`);
-
-  if (jobTimer) clearInterval(jobTimer);
 
   try {
     await app.close();

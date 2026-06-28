@@ -71,7 +71,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 - **Manual Adjustment** — editing a wallet's balance generates a transaction with `from_type = to_type = 'wallet'`, `from_id = to_id = <that wallet>`, for the delta.
 - **Installment expansion** — `installmentTotal > 1` generates N rows sharing a `credit_group_id`, dated one month apart, each carrying its `installment_number`.
 
-**Scheduled background job:**
+**Recurrence job (on startup + manual trigger):**
 - **Recurrence windowing** — maintains a rolling lookahead of materialized Bill/Revenue instances: **3 ahead** for day/week/month, **1 ahead** for year. Clamp `recurrent_day` to the month length at materialization (never rewrite the column). When a recurrence has no remaining instances it is **auto-deleted**; consumed bill/revenue rows survive with `recurrence_id` nulled (`on delete set null`).
 - **`estimated_value` recalculation** — recomputed on each materialization; used in projections only when `is_variable = true` (fixed recurrences project the exact `value`).
 
@@ -99,6 +99,15 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 - **Source:** the *reason* behind a Bill/Revenue, not the transaction counterparty (e.g. the apartment, not the plumber). Archive blocked (`409`) while it has unpaid bills or unreceived revenues (`hasOpenItems`).
 - **Wallet:** starts at balance 0; archived wallets are excluded from dashboard and selectors but retain full history.
 
+## Deployment
+
+- **DB:** Supabase (free tier, `sa-east-1`). Use the **session pooler** URL (`pooler.supabase.com`) — direct connections fail from hosts that don't support IPv6.
+- **BE:** Render free tier (`cousin-backend.onrender.com`). Build: `npm install -g pnpm@9.15.0 && pnpm install && pnpm build`. Start: `node dist/index.js`. Env vars (`DATABASE_URL`, `SUPABASE_JWT_SECRET`, `CORS_ORIGIN`) are set in the Render dashboard, not in `render.yaml`.
+- **SSL:** `pg` Pool uses `ssl: { rejectUnauthorized: false }` — required because Supabase certs don't chain to a public CA. `ssl: true` fails with `self-signed certificate in certificate chain`.
+- **Recurrence job:** Runs on startup (no `setInterval`). Render free tier sleeps after 15 min idle, so the timer approach doesn't work. FE can trigger manually via `POST /api/jobs/recurrence-window` (auth-protected).
+- **Cold starts:** First request after idle takes ~30-60s while Render spins up. FE should handle gracefully.
+- **Corepack:** `corepack enable` fails on Render (read-only `/usr/bin`). Use `npm install -g pnpm@9.15.0` instead.
+
 ## Source-of-truth specs
 
 Authoritative design docs live in `reference-files/`:
@@ -107,4 +116,5 @@ Authoritative design docs live in `reference-files/`:
 - `api-contracts.md` — REST endpoints, request/response shapes, computed fields
 - `glossary.md` — domain definitions and the authoritative transaction from/to matrix
 - `user-stories.md` — feature requirements and acceptance criteria
+- `endpoints.md` — complete list of implemented endpoints with query/body shapes
 - Frontend-only (separate app): `components-tree.md`, `ui-spec.md`, `design-system.md`
