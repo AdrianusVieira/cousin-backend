@@ -164,3 +164,12 @@ export async function updateRevenue(
 export async function deleteRevenueById(db: Pool | PoolClient, id: string): Promise<void> {
   await db.query(`delete from revenues where id = $1`, [id]);
 }
+
+export async function updateRevenuesValueByIds(
+  db: Pool | PoolClient,
+  ids: string[],
+  value: string,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db.query(`update revenues set value = $1 where id = any($2::uuid[])`, [value, ids]);
+}

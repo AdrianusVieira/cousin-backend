@@ -1,8 +1,12 @@
 import { pool } from "../../db/pool.js";
 import { subtractMonths, toISODate, today } from "../../lib/date.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
-import { computeNextTerm, lookaheadCount } from "../../lib/recurrences.js";
-import { createRecurrence } from "../recurrences/recurrences.repository.js";
+import { computeNextTerm, computeRecurrenceValueUpdate, lookaheadCount } from "../../lib/recurrences.js";
+import {
+  createRecurrence,
+  findRecurrenceById,
+  updateRecurrenceEstimatedValue,
+} from "../recurrences/recurrences.repository.js";
 import { findLinkedTransactionForRevenue } from "../transactions/transactions.repository.js";
 import { mapFullTransaction } from "../transactions/transactions.types.js";
 import type { CreateRevenueInput, PatchRevenueInput } from "./revenues.schema.js";
@@ -14,6 +18,7 @@ import {
   findRevenuesByRecurrenceId,
   findRevenueSummary,
   updateRevenue,
+  updateRevenuesValueByIds,
 } from "./revenues.repository.js";
 import { rowToRevenue, type Revenue } from "./revenues.types.js";
 
@@ -93,6 +98,7 @@ export async function createRevenue(input: CreateRevenueInput): Promise<Revenue>
       intervalValue: input.recurrence.intervalValue,
       recurrentDay: input.recurrence.recurrentDay,
       recurrentMonth: input.recurrence.recurrentMonth,
+      estimatedValue: input.recurrence.isVariable ? input.value : undefined,
     });
 
     const commonFields = {
@@ -127,7 +133,40 @@ export async function patchRevenue(id: string, input: PatchRevenueInput): Promis
   const existing = await findRevenueById(pool, id);
   if (!existing) throw new NotFoundError("Revenue not found");
 
-  await updateRevenue(pool, id, input);
+  const valueChanged = input.value !== undefined && input.value !== existing.value;
+  const recurrence =
+    existing.recurrence_id && valueChanged
+      ? await findRecurrenceById(pool, existing.recurrence_id)
+      : null;
+
+  if (!recurrence?.is_variable) {
+    await updateRevenue(pool, id, input);
+    const updated = await findRevenueById(pool, id);
+    return rowToRevenue(updated!, todayStr);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    await updateRevenue(client, id, input);
+    const siblings = await findRevenuesByRecurrenceId(client, existing.recurrence_id!);
+    const { estimatedValue, propagateIds } = computeRecurrenceValueUpdate(
+      siblings.map((s) => ({ id: s.id, isPaid: s.received, term: s.term, value: s.value })),
+      id,
+    );
+
+    await updateRecurrenceEstimatedValue(client, existing.recurrence_id!, estimatedValue);
+    await updateRevenuesValueByIds(client, propagateIds, estimatedValue);
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
   const updated = await findRevenueById(pool, id);
   return rowToRevenue(updated!, todayStr);
 }

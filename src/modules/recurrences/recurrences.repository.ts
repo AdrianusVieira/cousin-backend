@@ -22,6 +22,7 @@ export interface CreateRecurrenceInput {
   intervalValue: number;
   recurrentDay: number;
   recurrentMonth?: number;
+  estimatedValue?: string;
 }
 
 export async function createRecurrence(
@@ -29,8 +30,8 @@ export async function createRecurrence(
   input: CreateRecurrenceInput,
 ): Promise<RecurrenceRow> {
   const { rows } = await db.query<RecurrenceRow>(
-    `insert into recurrences (is_variable, interval_unit, interval_value, recurrent_day, recurrent_month)
-     values ($1, $2, $3, $4, $5)
+    `insert into recurrences (is_variable, interval_unit, interval_value, recurrent_day, recurrent_month, estimated_value)
+     values ($1, $2, $3, $4, $5, $6)
      returning *`,
     [
       input.isVariable,
@@ -38,9 +39,21 @@ export async function createRecurrence(
       input.intervalValue,
       input.recurrentDay,
       input.recurrentMonth ?? null,
+      input.estimatedValue ?? null,
     ],
   );
   return rows[0]!;
+}
+
+export async function updateRecurrenceEstimatedValue(
+  db: Pool | PoolClient,
+  id: string,
+  estimatedValue: string,
+): Promise<void> {
+  await db.query(`update recurrences set estimated_value = $1 where id = $2`, [
+    estimatedValue,
+    id,
+  ]);
 }
 
 export async function findRecurrenceById(
@@ -188,6 +201,7 @@ export interface WindowJobRow {
   recurrent_day: number;
   recurrent_month: number | null;
   is_variable: boolean;
+  estimated_value: string | null;
   type: "bill" | "revenue";
   max_term: string | null;
   future_count: string;
@@ -196,7 +210,6 @@ export interface WindowJobRow {
   template_value: string | null;
   template_source_id: string | null;
   template_description: string | null;
-  avg_actual: string | null;
 }
 
 export async function findRecurrencesForWindowJob(
@@ -217,13 +230,6 @@ export async function findRecurrencesForWindowJob(
       where b.recurrence_id is not null
       group by b.recurrence_id
     ),
-    bill_avg as (
-      select b.recurrence_id, avg(t.amount)::text as avg_actual
-      from bills b
-      join transactions t on t.to_type = 'bill' and t.to_id = b.id
-      where b.recurrence_id is not null
-      group by b.recurrence_id
-    ),
     revenue_agg as (
       select
         rv.recurrence_id,
@@ -237,17 +243,10 @@ export async function findRecurrencesForWindowJob(
       from revenues rv
       where rv.recurrence_id is not null
       group by rv.recurrence_id
-    ),
-    revenue_avg as (
-      select rv.recurrence_id, avg(t.amount)::text as avg_actual
-      from revenues rv
-      join transactions t on t.from_type = 'revenue' and t.from_id = rv.id
-      where rv.recurrence_id is not null
-      group by rv.recurrence_id
     )
     select
       r.id, r.interval_unit, r.interval_value, r.recurrent_day, r.recurrent_month,
-      r.is_variable,
+      r.is_variable, r.estimated_value::text as estimated_value,
       case when ba.recurrence_id is not null then 'bill' else 'revenue' end as type,
       coalesce(ba.max_term, ra.max_term) as max_term,
       coalesce(ba.future_count, ra.future_count, 0)::text as future_count,
@@ -255,13 +254,10 @@ export async function findRecurrencesForWindowJob(
       coalesce(ba.template_name, ra.template_name) as template_name,
       coalesce(ba.template_value, ra.template_value) as template_value,
       coalesce(ba.template_source_id, ra.template_source_id) as template_source_id,
-      coalesce(ba.template_description, ra.template_description) as template_description,
-      coalesce(bavg.avg_actual, ravg.avg_actual) as avg_actual
+      coalesce(ba.template_description, ra.template_description) as template_description
     from recurrences r
     left join bill_agg ba on ba.recurrence_id = r.id
-    left join bill_avg bavg on bavg.recurrence_id = r.id
     left join revenue_agg ra on ra.recurrence_id = r.id
-    left join revenue_avg ravg on ravg.recurrence_id = r.id
   `);
   return rows;
 }

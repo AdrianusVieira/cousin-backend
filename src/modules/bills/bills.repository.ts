@@ -158,3 +158,12 @@ export async function updateBill(
 export async function deleteBillById(db: Pool | PoolClient, id: string): Promise<void> {
   await db.query(`delete from bills where id = $1`, [id]);
 }
+
+export async function updateBillsValueByIds(
+  db: Pool | PoolClient,
+  ids: string[],
+  value: string,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db.query(`update bills set value = $1 where id = any($2::uuid[])`, [value, ids]);
+}
