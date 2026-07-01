@@ -40,44 +40,36 @@ async function processRecurrence(task: WindowJobRow): Promise<void> {
   }
 
   const needed = lookaheadCount(task.interval_unit) - futureCount;
-  const needsEstimatedValue = task.is_variable && task.avg_actual !== null;
-  if (needed <= 0 && !needsEstimatedValue) return;
+  if (needed <= 0) return;
 
   const client = await pool.connect();
   try {
     await client.query("begin");
 
-    if (needed > 0) {
-      const config = {
-        intervalUnit: task.interval_unit,
-        intervalValue: task.interval_value,
-        recurrentDay: task.recurrent_day,
-        recurrentMonth: task.recurrent_month,
-      };
-      const common = {
-        name: task.template_name ?? "",
-        value: task.template_value ?? "0.00",
-        sourceId: task.template_source_id ?? "",
-        description: task.template_description ?? undefined,
-        recurrenceId: task.id,
-      };
+    const config = {
+      intervalUnit: task.interval_unit,
+      intervalValue: task.interval_value,
+      recurrentDay: task.recurrent_day,
+      recurrentMonth: task.recurrent_month,
+    };
+    const common = {
+      name: task.template_name ?? "",
+      value: task.is_variable
+        ? task.estimated_value ?? task.template_value ?? "0.00"
+        : task.template_value ?? "0.00",
+      sourceId: task.template_source_id ?? "",
+      description: task.template_description ?? undefined,
+      recurrenceId: task.id,
+    };
 
-      let lastTerm = task.max_term!;
-      for (let i = 0; i < needed; i++) {
-        lastTerm = computeNextTerm(lastTerm, config);
-        if (task.type === "bill") {
-          await createBill(client, { ...common, term: lastTerm });
-        } else {
-          await createRevenue(client, { ...common, term: lastTerm });
-        }
+    let lastTerm = task.max_term!;
+    for (let i = 0; i < needed; i++) {
+      lastTerm = computeNextTerm(lastTerm, config);
+      if (task.type === "bill") {
+        await createBill(client, { ...common, term: lastTerm });
+      } else {
+        await createRevenue(client, { ...common, term: lastTerm });
       }
-    }
-
-    if (task.is_variable && task.avg_actual !== null) {
-      await client.query(
-        `update recurrences set estimated_value = $1 where id = $2`,
-        [task.avg_actual, task.id],
-      );
     }
 
     await client.query("commit");
