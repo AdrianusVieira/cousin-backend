@@ -73,13 +73,14 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 
 **Recurrence job (on startup + manual trigger):**
 - **Recurrence windowing** — maintains a rolling lookahead of materialized Bill/Revenue instances: **3 ahead** for day/week/month, **1 ahead** for year. Clamp `recurrent_day` to the month length at materialization (never rewrite the column). When a recurrence has no remaining instances it is **auto-deleted**; consumed bill/revenue rows survive with `recurrence_id` nulled (`on delete set null`).
-- **`estimated_value` recalculation** — recomputed on each materialization; used in projections only when `is_variable = true` (fixed recurrences project the exact `value`).
+- **Newly materialized instance value** — for `is_variable = true`, seeded from the recurrence's current `estimated_value` (falling back to the template value if null); fixed recurrences always use the template value. The job never writes `estimated_value` itself — see below.
 
 ### Recurrence lifecycle
 
 - `recurrent_day` is the *intended* day (e.g. 31), stored unclamped; scheduling clamps per month.
-- Creating a Bill/Revenue with a `recurrence` payload: the BE **synchronously materializes the initial window**, then the scheduled job maintains it.
-- Editing a recurrence **config** applies to **future instances only**. Editing one materialized **instance** (a Bill/Revenue row) affects only that row.
+- Creating a Bill/Revenue with a `recurrence` payload: the BE **synchronously materializes the initial window**, then the scheduled job maintains it. For a new `is_variable = true` recurrence, `estimated_value` is seeded from the first instance's `value` so it's never blank.
+- Editing a recurrence **config** applies to **future instances only**.
+- Editing one materialized **instance** (a Bill/Revenue row): for a **fixed** recurrence (or any edit that doesn't touch `value`), affects only that row, as before. For a **variable** (`is_variable = true`) recurrence, changing an instance's `value` also recomputes `estimated_value` — the average of `value` across all instances with `term <= edited.term` (using the new value for the edited row) — and propagates that recalculated value onto every sibling instance with `term > edited.term` that is still unpaid/unreceived. Past and already-paid/received instances are never rewritten. This is a deliberate exception to "editing an instance affects only that row," scoped to variable-value edits.
 - Deactivate: preserves the current instance, detaches the config, generates nothing further.
 
 ## Data & API conventions

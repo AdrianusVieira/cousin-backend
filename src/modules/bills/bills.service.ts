@@ -1,8 +1,12 @@
 import { pool } from "../../db/pool.js";
 import { subtractMonths, toISODate, today } from "../../lib/date.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
-import { computeNextTerm, lookaheadCount } from "../../lib/recurrences.js";
-import { createRecurrence } from "../recurrences/recurrences.repository.js";
+import { computeNextTerm, computeRecurrenceValueUpdate, lookaheadCount } from "../../lib/recurrences.js";
+import {
+  createRecurrence,
+  findRecurrenceById,
+  updateRecurrenceEstimatedValue,
+} from "../recurrences/recurrences.repository.js";
 import { findLinkedTransactionForBill } from "../transactions/transactions.repository.js";
 import { mapFullTransaction } from "../transactions/transactions.types.js";
 import type { CreateBillInput, PatchBillInput } from "./bills.schema.js";
@@ -14,6 +18,7 @@ import {
   findBillsByRecurrenceId,
   findBillSummary,
   updateBill,
+  updateBillsValueByIds,
 } from "./bills.repository.js";
 import { rowToBill, type Bill } from "./bills.types.js";
 
@@ -93,6 +98,7 @@ export async function createBill(input: CreateBillInput): Promise<Bill> {
       intervalValue: input.recurrence.intervalValue,
       recurrentDay: input.recurrence.recurrentDay,
       recurrentMonth: input.recurrence.recurrentMonth,
+      estimatedValue: input.recurrence.isVariable ? input.value : undefined,
     });
 
     const commonFields = {
@@ -127,7 +133,40 @@ export async function patchBill(id: string, input: PatchBillInput): Promise<Bill
   const existing = await findBillById(pool, id);
   if (!existing) throw new NotFoundError("Bill not found");
 
-  await updateBill(pool, id, input);
+  const valueChanged = input.value !== undefined && input.value !== existing.value;
+  const recurrence =
+    existing.recurrence_id && valueChanged
+      ? await findRecurrenceById(pool, existing.recurrence_id)
+      : null;
+
+  if (!recurrence?.is_variable) {
+    await updateBill(pool, id, input);
+    const updated = await findBillById(pool, id);
+    return rowToBill(updated!, todayStr);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    await updateBill(client, id, input);
+    const siblings = await findBillsByRecurrenceId(client, existing.recurrence_id!);
+    const { estimatedValue, propagateIds } = computeRecurrenceValueUpdate(
+      siblings.map((s) => ({ id: s.id, isPaid: s.paid, term: s.term, value: s.value })),
+      id,
+    );
+
+    await updateRecurrenceEstimatedValue(client, existing.recurrence_id!, estimatedValue);
+    await updateBillsValueByIds(client, propagateIds, estimatedValue);
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
   const updated = await findBillById(pool, id);
   return rowToBill(updated!, todayStr);
 }

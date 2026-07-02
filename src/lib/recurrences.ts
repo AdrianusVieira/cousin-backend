@@ -1,3 +1,5 @@
+import { fromCents, toCents } from "./money.js";
+
 export type IntervalUnit = "day" | "week" | "month" | "year";
 
 export interface RecurrenceConfig {
@@ -5,6 +7,44 @@ export interface RecurrenceConfig {
   intervalValue: number;
   recurrentDay: number;
   recurrentMonth?: number | null;
+}
+
+export interface RecurrenceInstance {
+  id: string;
+  isPaid: boolean;
+  term: string;
+  value: string;
+}
+
+export interface RecurrenceValueUpdate {
+  estimatedValue: string;
+  propagateIds: string[];
+}
+
+/**
+ * Given all sibling instances of a variable recurrence, including the
+ * already-updated edited row, computes the new estimated value (average of
+ * value across instances with term <= edited.term) and which future, unpaid
+ * siblings should be set to it.
+ */
+export function computeRecurrenceValueUpdate(
+  instances: RecurrenceInstance[],
+  editedId: string,
+): RecurrenceValueUpdate {
+  const edited = instances.find((i) => i.id === editedId)!;
+
+  const upToEditedCents = instances
+    .filter((i) => i.term <= edited.term)
+    .map((i) => toCents(i.value));
+
+  const totalCents = upToEditedCents.reduce((sum, c) => sum + c, 0);
+  const estimatedValue = fromCents(totalCents / upToEditedCents.length);
+
+  const propagateIds = instances
+    .filter((i) => i.term > edited.term && !i.isPaid)
+    .map((i) => i.id);
+
+  return { estimatedValue, propagateIds };
 }
 
 /** Number of instances to materialize ahead of the current one. */
