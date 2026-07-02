@@ -222,6 +222,7 @@ export async function findRecurrencesForWindowJob(
       from bills b
       join transactions t on t.to_type = 'bill' and t.to_id = b.id
       where b.recurrence_id is not null
+        and b.term < current_date
       group by b.recurrence_id
     ),
     revenue_agg as (
@@ -243,6 +244,7 @@ export async function findRecurrencesForWindowJob(
       from revenues rv
       join transactions t on t.from_type = 'revenue' and t.from_id = rv.id
       where rv.recurrence_id is not null
+        and rv.term < current_date
       group by rv.recurrence_id
     )
     select
