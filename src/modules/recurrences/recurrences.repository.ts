@@ -22,6 +22,7 @@ export interface CreateRecurrenceInput {
   intervalValue: number;
   recurrentDay: number;
   recurrentMonth?: number;
+  estimatedValue?: string;
 }
 
 export async function createRecurrence(
@@ -29,8 +30,8 @@ export async function createRecurrence(
   input: CreateRecurrenceInput,
 ): Promise<RecurrenceRow> {
   const { rows } = await db.query<RecurrenceRow>(
-    `insert into recurrences (is_variable, interval_unit, interval_value, recurrent_day, recurrent_month)
-     values ($1, $2, $3, $4, $5)
+    `insert into recurrences (is_variable, interval_unit, interval_value, recurrent_day, recurrent_month, estimated_value)
+     values ($1, $2, $3, $4, $5, $6)
      returning *`,
     [
       input.isVariable,
@@ -38,19 +39,25 @@ export async function createRecurrence(
       input.intervalValue,
       input.recurrentDay,
       input.recurrentMonth ?? null,
+      input.estimatedValue ?? null,
     ],
   );
   return rows[0]!;
+}
+
+export async function updateRecurrenceEstimatedValue(
+  db: Pool | PoolClient,
+  id: string,
+  estimatedValue: string,
+): Promise<void> {
+  await db.query(`update recurrences set estimated_value = $1 where id = $2`, [estimatedValue, id]);
 }
 
 export async function findRecurrenceById(
   db: Pool | PoolClient,
   id: string,
 ): Promise<RecurrenceRow | null> {
-  const { rows } = await db.query<RecurrenceRow>(
-    `select * from recurrences where id = $1`,
-    [id],
-  );
+  const { rows } = await db.query<RecurrenceRow>(`select * from recurrences where id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -161,11 +168,26 @@ export async function updateRecurrence(
   const sets: string[] = [];
   const values: unknown[] = [];
 
-  if (fields.intervalUnit !== undefined) { values.push(fields.intervalUnit); sets.push(`interval_unit = $${values.length}`); }
-  if (fields.intervalValue !== undefined) { values.push(fields.intervalValue); sets.push(`interval_value = $${values.length}`); }
-  if (fields.isVariable !== undefined) { values.push(fields.isVariable); sets.push(`is_variable = $${values.length}`); }
-  if (fields.recurrentDay !== undefined) { values.push(fields.recurrentDay); sets.push(`recurrent_day = $${values.length}`); }
-  if ("recurrentMonth" in fields) { values.push(fields.recurrentMonth ?? null); sets.push(`recurrent_month = $${values.length}`); }
+  if (fields.intervalUnit !== undefined) {
+    values.push(fields.intervalUnit);
+    sets.push(`interval_unit = $${values.length}`);
+  }
+  if (fields.intervalValue !== undefined) {
+    values.push(fields.intervalValue);
+    sets.push(`interval_value = $${values.length}`);
+  }
+  if (fields.isVariable !== undefined) {
+    values.push(fields.isVariable);
+    sets.push(`is_variable = $${values.length}`);
+  }
+  if (fields.recurrentDay !== undefined) {
+    values.push(fields.recurrentDay);
+    sets.push(`recurrent_day = $${values.length}`);
+  }
+  if ("recurrentMonth" in fields) {
+    values.push(fields.recurrentMonth ?? null);
+    sets.push(`recurrent_month = $${values.length}`);
+  }
 
   if (sets.length === 0) return findRecurrenceById(db, id);
 
@@ -188,6 +210,7 @@ export interface WindowJobRow {
   recurrent_day: number;
   recurrent_month: number | null;
   is_variable: boolean;
+  estimated_value: string | null;
   type: "bill" | "revenue";
   max_term: string | null;
   future_count: string;
@@ -196,12 +219,9 @@ export interface WindowJobRow {
   template_value: string | null;
   template_source_id: string | null;
   template_description: string | null;
-  avg_actual: string | null;
 }
 
-export async function findRecurrencesForWindowJob(
-  db: Pool | PoolClient,
-): Promise<WindowJobRow[]> {
+export async function findRecurrencesForWindowJob(db: Pool | PoolClient): Promise<WindowJobRow[]> {
   const { rows } = await db.query<WindowJobRow>(`
     with bill_agg as (
       select
@@ -249,7 +269,7 @@ export async function findRecurrencesForWindowJob(
     )
     select
       r.id, r.interval_unit, r.interval_value, r.recurrent_day, r.recurrent_month,
-      r.is_variable,
+      r.is_variable, r.estimated_value::text as estimated_value,
       case when ba.recurrence_id is not null then 'bill' else 'revenue' end as type,
       coalesce(ba.max_term, ra.max_term) as max_term,
       coalesce(ba.future_count, ra.future_count, 0)::text as future_count,
@@ -257,13 +277,10 @@ export async function findRecurrencesForWindowJob(
       coalesce(ba.template_name, ra.template_name) as template_name,
       coalesce(ba.template_value, ra.template_value) as template_value,
       coalesce(ba.template_source_id, ra.template_source_id) as template_source_id,
-      coalesce(ba.template_description, ra.template_description) as template_description,
-      coalesce(bavg.avg_actual, ravg.avg_actual) as avg_actual
+      coalesce(ba.template_description, ra.template_description) as template_description
     from recurrences r
     left join bill_agg ba on ba.recurrence_id = r.id
-    left join bill_avg bavg on bavg.recurrence_id = r.id
     left join revenue_agg ra on ra.recurrence_id = r.id
-    left join revenue_avg ravg on ravg.recurrence_id = r.id
   `);
   return rows;
 }
