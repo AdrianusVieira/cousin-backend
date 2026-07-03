@@ -13,7 +13,7 @@ export interface RecurrenceVarianceRow {
   bill_value: string;
   is_variable: boolean;
   estimated_value: string | null;
-  actual_amount: string | null;
+  settled: boolean;
 }
 
 export interface CreateRecurrenceInput {
@@ -122,10 +122,9 @@ export async function findBillVarianceByRecurrenceId(
        b.value::text as bill_value,
        r.is_variable,
        r.estimated_value::text as estimated_value,
-       t.amount::text as actual_amount
+       b.paid as settled
      from bills b
      join recurrences r on r.id = b.recurrence_id
-     left join transactions t on t.to_type = 'bill' and t.to_id = b.id
      where b.recurrence_id = $1
      order by b.term asc`,
     [recurrenceId],
@@ -143,10 +142,9 @@ export async function findRevenueVarianceByRecurrenceId(
        rv.value::text as bill_value,
        r.is_variable,
        r.estimated_value::text as estimated_value,
-       t.amount::text as actual_amount
+       rv.received as settled
      from revenues rv
      join recurrences r on r.id = rv.recurrence_id
-     left join transactions t on t.from_type = 'revenue' and t.from_id = rv.id
      where rv.recurrence_id = $1
      order by rv.term asc`,
     [recurrenceId],

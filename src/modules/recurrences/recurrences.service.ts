@@ -29,7 +29,7 @@ import { rowToRecurrence } from "./recurrences.types.js";
 function varianceEntry(row: RecurrenceVarianceRow) {
   const estimated =
     row.is_variable && row.estimated_value ? row.estimated_value : row.bill_value;
-  return { date: row.date, estimated, actual: row.actual_amount ?? null };
+  return { date: row.date, estimated, actual: row.settled ? row.bill_value : null };
 }
 
 export async function listRecurrences(query: { from?: string; to?: string }) {
