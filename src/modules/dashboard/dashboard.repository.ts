@@ -5,18 +5,8 @@ export async function findDashboardRevenue(
   { from, to }: { from: string; to: string },
 ): Promise<string> {
   const { rows } = await db.query<{ total: string }>(
-    `select coalesce(sum(
-       case
-         when rv.recurrence_id is not null
-           and rv.term > current_date
-           and rec.is_variable = true
-           and rec.estimated_value is not null
-         then rec.estimated_value
-         else rv.value
-       end
-     ), 0.00)::text as total
+    `select coalesce(sum(rv.value), 0.00)::text as total
      from revenues rv
-     left join recurrences rec on rec.id = rv.recurrence_id
      where rv.term between $1 and $2
        and rv.received = false`,
     [from, to],
@@ -29,18 +19,8 @@ export async function findDashboardOutcome(
   { from, to }: { from: string; to: string },
 ): Promise<string> {
   const { rows } = await db.query<{ total: string }>(
-    `select coalesce(sum(
-       case
-         when b.recurrence_id is not null
-           and b.term > current_date
-           and rec.is_variable = true
-           and rec.estimated_value is not null
-         then rec.estimated_value
-         else b.value
-       end
-     ), 0.00)::text as total
+    `select coalesce(sum(b.value), 0.00)::text as total
      from bills b
-     left join recurrences rec on rec.id = b.recurrence_id
      where b.term between $1 and $2
        and b.paid = false`,
     [from, to],
