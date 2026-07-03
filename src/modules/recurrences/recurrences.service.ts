@@ -1,9 +1,16 @@
 import { pool } from "../../db/pool.js";
 import { toISODate, today } from "../../lib/date.js";
-import { NotFoundError } from "../../lib/errors.js";
-import { findBillsByRecurrenceId } from "../bills/bills.repository.js";
+import { ConflictError, NotFoundError } from "../../lib/errors.js";
+import { computeEstimateFromPast } from "../../lib/recurrences.js";
+import {
+  findBillsByRecurrenceId,
+  updateBillsValueByIds,
+} from "../bills/bills.repository.js";
 import { rowToBill } from "../bills/bills.types.js";
-import { findRevenuesByRecurrenceId } from "../revenues/revenues.repository.js";
+import {
+  findRevenuesByRecurrenceId,
+  updateRevenuesValueByIds,
+} from "../revenues/revenues.repository.js";
 import { rowToRevenue } from "../revenues/revenues.types.js";
 import {
   deleteRecurrence,
@@ -13,6 +20,7 @@ import {
   findRecurringOutflow,
   findRevenueVarianceByRecurrenceId,
   updateRecurrence,
+  updateRecurrenceEstimatedValue,
   type RecurrenceVarianceRow,
 } from "./recurrences.repository.js";
 import type { PatchRecurrenceInput } from "./recurrences.schema.js";
@@ -118,6 +126,50 @@ export async function patchRecurrenceConfig(
     revenueInstances.some((r) => r.term >= todayStr);
 
   return rowToRecurrence(updated!, active);
+}
+
+export async function recomputeRecurrenceEstimate(id: string): Promise<void> {
+  const recurrence = await findRecurrenceById(pool, id);
+  if (!recurrence) throw new NotFoundError("Recurrence not found");
+  if (!recurrence.is_variable) {
+    throw new ConflictError(
+      "NOT_VARIABLE",
+      "Estimate can only be recomputed for variable recurrences",
+    );
+  }
+
+  const todayStr = toISODate(today());
+  const [billInstances, revenueInstances] = await Promise.all([
+    findBillsByRecurrenceId(pool, id),
+    findRevenuesByRecurrenceId(pool, id),
+  ]);
+  const isBill = billInstances.length > 0;
+
+  const instances = isBill
+    ? billInstances.map((b) => ({ id: b.id, isPaid: b.paid, term: b.term, value: b.value }))
+    : revenueInstances.map((r) => ({ id: r.id, isPaid: r.received, term: r.term, value: r.value }));
+
+  const { estimatedValue, propagateIds } = computeEstimateFromPast(instances, todayStr);
+  if (estimatedValue === null) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    await updateRecurrenceEstimatedValue(client, id, estimatedValue);
+    if (isBill) {
+      await updateBillsValueByIds(client, propagateIds, estimatedValue);
+    } else {
+      await updateRevenuesValueByIds(client, propagateIds, estimatedValue);
+    }
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deactivateRecurrence(id: string): Promise<void> {

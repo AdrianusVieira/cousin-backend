@@ -5,6 +5,7 @@ import {
   getRecurrenceDetail,
   listRecurrences,
   patchRecurrenceConfig,
+  recomputeRecurrenceEstimate,
 } from "./recurrences.service.js";
 
 export async function registerRecurrenceRoutes(app: FastifyInstance) {
@@ -26,6 +27,14 @@ export async function registerRecurrenceRoutes(app: FastifyInstance) {
     "/recurrences/:id/deactivate",
     async (request, reply) => {
       await deactivateRecurrence(request.params.id);
+      reply.status(204);
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/recurrences/:id/recompute-estimate",
+    async (request, reply) => {
+      await recomputeRecurrenceEstimate(request.params.id);
       reply.status(204);
     },
   );

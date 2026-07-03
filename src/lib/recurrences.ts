@@ -24,8 +24,10 @@ export interface RecurrenceValueUpdate {
 /**
  * Given all sibling instances of a variable recurrence, including the
  * already-updated edited row, computes the new estimated value (average of
- * value across instances with term <= edited.term) and which future, unpaid
- * siblings should be set to it.
+ * value across instances strictly before edited.term — past instances only)
+ * and which future, unpaid siblings should be set to it. When the edited row
+ * is the earliest instance there is no past to average, so its own value is
+ * used as the estimate.
  */
 export function computeRecurrenceValueUpdate(
   instances: RecurrenceInstance[],
@@ -33,15 +35,48 @@ export function computeRecurrenceValueUpdate(
 ): RecurrenceValueUpdate {
   const edited = instances.find((i) => i.id === editedId)!;
 
-  const upToEditedCents = instances
-    .filter((i) => i.term <= edited.term)
+  const pastCents = instances
+    .filter((i) => i.term < edited.term)
     .map((i) => toCents(i.value));
 
-  const totalCents = upToEditedCents.reduce((sum, c) => sum + c, 0);
-  const estimatedValue = fromCents(totalCents / upToEditedCents.length);
+  const totalCents = pastCents.reduce((sum, c) => sum + c, 0);
+  const estimatedValue = pastCents.length
+    ? fromCents(totalCents / pastCents.length)
+    : edited.value;
 
   const propagateIds = instances
     .filter((i) => i.term > edited.term && !i.isPaid)
+    .map((i) => i.id);
+
+  return { estimatedValue, propagateIds };
+}
+
+export interface RecurrenceEstimateResult {
+  estimatedValue: string | null;
+  propagateIds: string[];
+}
+
+/**
+ * Recomputes a variable recurrence's estimate from scratch: averages the value
+ * of instances strictly before today and returns the current/future unpaid
+ * siblings that should adopt it. Yields a null estimate (and no propagation)
+ * when there are no past instances to average.
+ */
+export function computeEstimateFromPast(
+  instances: RecurrenceInstance[],
+  todayISO: string,
+): RecurrenceEstimateResult {
+  const pastCents = instances
+    .filter((i) => i.term < todayISO)
+    .map((i) => toCents(i.value));
+
+  if (pastCents.length === 0) return { estimatedValue: null, propagateIds: [] };
+
+  const totalCents = pastCents.reduce((sum, c) => sum + c, 0);
+  const estimatedValue = fromCents(totalCents / pastCents.length);
+
+  const propagateIds = instances
+    .filter((i) => i.term >= todayISO && !i.isPaid)
     .map((i) => i.id);
 
   return { estimatedValue, propagateIds };
