@@ -82,11 +82,11 @@ No create endpoint — recurrences are born from a Bill/Revenue.
 
 ## Wallets
 
-List is not period-scoped (patrimony is current).
+Patrimony is current; the comparison window (`trend`, `patrimonyVsAverage`, per-item `vsAverageDelta`) is period-scoped via `from`/`to`.
 
 | Method | Path | Query / Body | Returns |
 | :----- | :--- | :----------- | :------ |
-| `GET` | `/wallets` | `active?` (`true\|false`) | `{ summary, trend, items }` |
+| `GET` | `/wallets` | `active?` (`true\|false`), `from?`, `to?` | `{ summary, trend, items }` |
 | `POST` | `/wallets` | Body: `{ name, description? }` | `201` with `Wallet`. Balance starts at 0. |
 | `GET` | `/wallets/:id` | `from?`, `to?` | `{ wallet, summary, balanceSeries }` |
 | `PATCH` | `/wallets/:id` | Body: `name?`, `description?`, `balance?` — ≥1 required | Editing `balance` generates a Manual Adjustment txn for the delta. |
