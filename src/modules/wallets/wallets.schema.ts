@@ -24,6 +24,8 @@ export const walletListQuerySchema = z.object({
     .enum(["true", "false"])
     .transform((value) => value === "true")
     .optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
 });
 
 export const walletDetailQuerySchema = z.object({

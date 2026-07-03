@@ -240,20 +240,20 @@ Layout: back link · page head (name, frequency, type, actions: Edit config / De
 
 ## 7. Wallets
 
-**Route:** `/wallets` · **Note:** this view is _not_ period-scoped at the list level (patrimony is current); the comparison windows are fixed at "last 3 months" per the user stories.
+**Route:** `/wallets` · **Note:** patrimony is current, but the comparison windows are period-scoped — the list uses the global Period Selector, defaulting to the last 3 months.
 
 ### Layout
 
 1. Page head: title, sub-line, "New wallet".
 2. Stat row — 3 cards: Total Patrimony, Active Wallets (count), Archived (count).
-   - Total Patrimony note: comparison vs last-3-months average.
-3. Two-column row: Patrimony trend line chart (left) + current-vs-3-month-average diverging bars (right).
+   - Total Patrimony note: comparison vs the period average.
+3. Two-column row: Patrimony trend line chart with a dashed period-average reference line (left) + current-vs-period-average diverging bars (right).
 4. Wallets table (active + archived, archived visually dimmed).
 
 ### Data
 
 - Table: Wallet name · Description · vs-average delta (coloured ±) · archived pill · Balance (serif).
-- Per-wallet comparison: current value vs average over last 3 months — drives both the diverging bar chart and the table delta column.
+- Per-wallet comparison: current value vs average over the selected period — drives both the diverging bar chart and the table delta column.
 
 ### Interactions
 
@@ -264,7 +264,7 @@ Layout: back link · page head (name, frequency, type, actions: Edit config / De
 
 **Route:** `/wallets/:id`
 
-Layout: back link · page head (name, description, actions: Edit / Archive·Unarchive, **Period Selector** — see §0.2 proposal replacing the fixed toggles) · 3 stat cards (Current Balance, 3-mo Average, Status) · balance-over-period line chart · transactions table (reuses the Transactions table component, scoped to this wallet, with create/edit/delete in context).
+Layout: back link · page head (name, description, actions: Edit / Archive·Unarchive, **Period Selector** — see §0.2 proposal replacing the fixed toggles) · 3 stat cards (Current Balance, Period Average, Status) · balance-over-period line chart with a dashed period-average reference line · transactions table (reuses the Transactions table component, scoped to this wallet, with create/edit/delete in context).
 
 - Editing balance creates a Manual Adjustment transaction for the delta (background; surfaced in the transaction list).
 - Archive: excluded from dashboard and selectors when archived; still listed here, dimmed; history preserved; reversible.
@@ -353,6 +353,6 @@ Every stat-card note line currently in the prototype, and its corrected content 
 | Dashboard · Savings Rate  | "Above 20% target"  | Delta vs prior period, or omit                                |
 | Dashboard · Net Balance   | "Healthy surplus"   | ⚑ Judgement phrase — replace with net delta vs prior, or omit |
 | Bills · Overdue           | "Past term, unpaid" | OK (factual descriptor)                                       |
-| Wallets · Total Patrimony | "+4.2% vs 3-mo avg" | OK (real comparison)                                          |
+| Wallets · Total Patrimony | "+4.2% vs period avg" | OK (real comparison)                                        |
 
 ⚑ **PROPOSAL** — apply the §0.3 rule across all views: any note that is a subjective judgement ("Healthy surplus", "Above target") is replaced with a data-derived figure or removed. Descriptive notes that merely restate what the number is ("Money into wallets", "Past term, unpaid") are acceptable.

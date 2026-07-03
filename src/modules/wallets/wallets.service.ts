@@ -65,19 +65,19 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export async function listWallets(filter: { active?: boolean }) {
+export async function listWallets(query: { active?: boolean; from?: string; to?: string }) {
   const [allRows, filteredRows] = await Promise.all([
     findAllWallets(pool),
-    findAllWallets(pool, filter),
+    findAllWallets(pool, { active: query.active }),
   ]);
 
   const activeRows = allRows.filter((row) => !row.archived);
   const totalPatrimonyCents = activeRows.reduce((sum, row) => sum + toCents(row.balance), 0);
 
-  const to = today();
-  const from = subtractMonths(to, 3);
-  const toIso = toISODate(to);
-  const fromIso = toISODate(from);
+  const todayIso = toISODate(today());
+  const requestedTo = query.to ?? todayIso;
+  const toIso = requestedTo > todayIso ? todayIso : requestedTo;
+  const fromIso = query.from ?? toISODate(subtractMonths(new Date(`${toIso}T00:00:00Z`), 3));
 
   const seriesByWallet = new Map<string, BalancePoint[]>();
   for (const row of activeRows) {
@@ -113,7 +113,7 @@ export async function listWallets(filter: { active?: boolean }) {
       totalPatrimony: fromCents(totalPatrimonyCents),
       activeCount: activeRows.length,
       archivedCount: allRows.length - activeRows.length,
-      patrimonyVs3moAvg: {
+      patrimonyVsAverage: {
         delta: fromCents(patrimonyDeltaCents),
         pct: trendAverageCents === 0 ? 0 : (patrimonyDeltaCents / trendAverageCents) * 100,
       },

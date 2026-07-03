@@ -426,10 +426,12 @@ POST  /recurrences/:id/deactivate   // preserves current instance, detaches conf
 
 ## Wallets
 
-List is **not** period-scoped (patrimony is current); comparison windows are fixed at last 3 months.
+Patrimony (`totalPatrimony`, and each item's `balance`) is always current. The comparison window is
+**period-scoped**: `trend`, `patrimonyVsAverage`, and each item's `vsAverageDelta` are computed over
+`[from, to]`, with `to` clamped to today and `from` defaulting to 3 months before `to`.
 
 ```
-GET /wallets
+GET /wallets?from&to
 ```
 
 ```ts
@@ -438,9 +440,9 @@ interface WalletListResponse {
     totalPatrimony: Money;
     activeCount: number;
     archivedCount: number;
-    patrimonyVs3moAvg: { delta: Money; pct: number };
+    patrimonyVsAverage: { delta: Money; pct: number }; // current patrimony vs its period average
   };
-  trend: Array<{ date: ISODate; total: Money }>; // patrimony trend chart
+  trend: Array<{ date: ISODate; total: Money }>; // patrimony trend chart (period-scoped)
   items: Array<Wallet & { vsAverageDelta: Money }>; // drives table delta + diverging bars
 }
 ```
