@@ -58,9 +58,11 @@ export interface RecurrenceEstimateResult {
 
 /**
  * Recomputes a variable recurrence's estimate from scratch: averages the value
- * of instances strictly before today and returns the current/future unpaid
- * siblings that should adopt it. Yields a null estimate (and no propagation)
- * when there are no past instances to average.
+ * of instances strictly before today and returns the *strictly future* unpaid
+ * siblings that should adopt it. The current (nearest upcoming) instance is
+ * never rewritten — it's the one about to be paid, so its value is vital and
+ * preserved. Yields a null estimate (and no propagation) when there are no past
+ * instances to average.
  */
 export function computeEstimateFromPast(
   instances: RecurrenceInstance[],
@@ -75,8 +77,13 @@ export function computeEstimateFromPast(
   const totalCents = pastCents.reduce((sum, c) => sum + c, 0);
   const estimatedValue = fromCents(totalCents / pastCents.length);
 
+  const currentTerm = instances
+    .filter((i) => i.term >= todayISO)
+    .map((i) => i.term)
+    .sort()[0];
+
   const propagateIds = instances
-    .filter((i) => i.term >= todayISO && !i.isPaid)
+    .filter((i) => currentTerm !== undefined && i.term > currentTerm && !i.isPaid)
     .map((i) => i.id);
 
   return { estimatedValue, propagateIds };
