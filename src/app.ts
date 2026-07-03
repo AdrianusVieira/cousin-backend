@@ -10,6 +10,7 @@ import { registerBillRoutes } from "./modules/bills/bills.routes.js";
 import { registerCategoryRoutes } from "./modules/categories/categories.routes.js";
 import { registerCreditRoutes } from "./modules/credit/credit.routes.js";
 import { registerDashboardRoutes } from "./modules/dashboard/dashboard.routes.js";
+import { registerImportRoutes } from "./modules/imports/imports.routes.js";
 import { registerRecurrenceRoutes } from "./modules/recurrences/recurrences.routes.js";
 import { registerRevenueRoutes } from "./modules/revenues/revenues.routes.js";
 import { registerSourceRoutes } from "./modules/sources/sources.routes.js";
@@ -65,6 +66,7 @@ export function buildApp() {
       await registerCategoryRoutes(api);
       await registerCreditRoutes(api);
       await registerDashboardRoutes(api);
+      await registerImportRoutes(api);
       await registerRecurrenceRoutes(api);
       await registerRevenueRoutes(api);
       await registerSourceRoutes(api);

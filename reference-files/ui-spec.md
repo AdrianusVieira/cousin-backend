@@ -247,13 +247,13 @@ Layout: back link · page head (name, frequency, type, actions: Edit config / De
 1. Page head: title, sub-line, "New wallet".
 2. Stat row — 3 cards: Total Patrimony, Active Wallets (count), Archived (count).
    - Total Patrimony note: comparison vs the period average.
-3. Two-column row: Patrimony trend line chart with a dashed period-average reference line (left) + current-vs-period-average diverging bars (right).
+3. Patrimony trend line chart with a dashed period-average reference line.
 4. Wallets table (active + archived, archived visually dimmed).
 
 ### Data
 
 - Table: Wallet name · Description · vs-average delta (coloured ±) · archived pill · Balance (serif).
-- Per-wallet comparison: current value vs average over the selected period — drives both the diverging bar chart and the table delta column.
+- Per-wallet comparison: current value vs average over the selected period — drives the table delta column.
 
 ### Interactions
 
