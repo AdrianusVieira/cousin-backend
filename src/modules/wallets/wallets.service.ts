@@ -127,7 +127,9 @@ export async function getWalletDetail(id: string, range: { from?: string; to?: s
   const row = await findWalletById(pool, id);
   if (!row) throw new NotFoundError("Wallet not found");
 
-  const to = range.to ?? toISODate(today());
+  const todayIso = toISODate(today());
+  const requestedTo = range.to ?? todayIso;
+  const to = requestedTo > todayIso ? todayIso : requestedTo;
   const from = range.from ?? toISODate(subtractMonths(new Date(`${to}T00:00:00Z`), 3));
 
   const txns = await getWalletDebitTxnsSince(pool, id, from);
