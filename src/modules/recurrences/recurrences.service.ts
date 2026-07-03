@@ -26,10 +26,15 @@ import {
 import type { PatchRecurrenceInput } from "./recurrences.schema.js";
 import { rowToRecurrence } from "./recurrences.types.js";
 
-function varianceEntry(row: RecurrenceVarianceRow) {
+function varianceEntry(row: RecurrenceVarianceRow, currentTerm: string | undefined) {
   const estimated =
     row.is_variable && row.estimated_value ? row.estimated_value : row.bill_value;
-  return { date: row.date, estimated, actual: row.settled ? row.bill_value : null };
+
+  // Settled instances plot their recorded value on the actual line; the current
+  // (nearest upcoming) instance also plots its value even when unpaid, so its
+  // vital amount is visible against the estimate instead of leaving a gap.
+  const showActual = row.settled || row.date === currentTerm;
+  return { date: row.date, estimated, actual: showActual ? row.bill_value : null };
 }
 
 export async function listRecurrences(query: { from?: string; to?: string }) {
@@ -98,12 +103,17 @@ export async function getRecurrenceDetail(id: string) {
     ? billInstances.map((b) => rowToBill(b, todayStr))
     : revenueInstances.map((r) => rowToRevenue(r, todayStr));
 
+  const currentTerm = varianceRows
+    .map((v) => v.date)
+    .filter((d) => d >= todayStr)
+    .sort()[0];
+
   return {
     recurrence: rowToRecurrence(row, active),
     name,
     type,
     instances,
-    variance: varianceRows.map(varianceEntry),
+    variance: varianceRows.map((v) => varianceEntry(v, currentTerm)),
   };
 }
 
