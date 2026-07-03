@@ -7,8 +7,7 @@ export async function findDashboardRevenue(
   const { rows } = await db.query<{ total: string }>(
     `select coalesce(sum(rv.value), 0.00)::text as total
      from revenues rv
-     where rv.term between $1 and $2
-       and rv.received = false`,
+     where rv.term between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";
@@ -21,8 +20,7 @@ export async function findDashboardOutcome(
   const { rows } = await db.query<{ total: string }>(
     `select coalesce(sum(b.value), 0.00)::text as total
      from bills b
-     where b.term between $1 and $2
-       and b.paid = false`,
+     where b.term between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";
