@@ -453,7 +453,7 @@ GET  /wallets/:id?from&to           // detail
 ```ts
 interface WalletDetailResponse {
   wallet: Wallet;
-  summary: { currentBalance: Money; threeMonthAverage: Money };
+  summary: { currentBalance: Money; periodAverage: Money };
   balanceSeries: Array<{ date: ISODate; balance: Money }>;
 }
 ```

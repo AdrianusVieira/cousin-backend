@@ -132,13 +132,13 @@ export async function getWalletDetail(id: string, range: { from?: string; to?: s
 
   const txns = await getWalletDebitTxnsSince(pool, id, from);
   const balanceSeries = buildBalanceSeries(row.balance, txns, id, from, to);
-  const threeMonthAverageCents = average(balanceSeries.map((point) => toCents(point.balance)));
+  const periodAverageCents = average(balanceSeries.map((point) => toCents(point.balance)));
 
   return {
     wallet: rowToWallet(row),
     summary: {
       currentBalance: row.balance,
-      threeMonthAverage: fromCents(threeMonthAverageCents),
+      periodAverage: fromCents(periodAverageCents),
     },
     balanceSeries,
   };
