@@ -443,7 +443,7 @@ interface WalletListResponse {
     patrimonyVsAverage: { delta: Money; pct: number }; // current patrimony vs its period average
   };
   trend: Array<{ date: ISODate; total: Money }>; // patrimony trend chart (period-scoped)
-  items: Array<Wallet & { vsAverageDelta: Money }>; // drives table delta + diverging bars
+  items: Array<Wallet & { vsAverageDelta: Money }>; // drives table delta column
 }
 ```
 

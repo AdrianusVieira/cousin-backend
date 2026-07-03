@@ -105,7 +105,7 @@ Direct from `design-system.md`; no data fetching, no business logic.
 <Notice>                                     §7.6  '!'-prefixed
 <Pill kind>                                  status pills
 <Value>                                      Playfair ≥21px, tabular-nums, money formatting
-<AreaChart> <LineChart> <DivergingBars> <VarianceChart>   §7.3 Recharts wrappers
+<AreaChart> <LineChart> <VarianceChart>      §7.3 Recharts wrappers
 ```
 
 ### Shared composite components
@@ -166,7 +166,7 @@ Each page owns its aggregate query and composes primitives. Layouts are in `ui-s
    ├─ PageHead + New (NOT period-scoped)   ├─ back link + PageHead + PeriodSelector + Edit/Archive
    ├─ StatCard ×3 (Patrimony, Active,      ├─ StatCard ×3 (Balance, 3-mo Avg, Status)
    │   Archived)                           ├─ <LineChart> balance over period
-   ├─ <LineChart> trend + <DivergingBars>  └─ <TransactionsTable filters={{ wallet: id }} />
+   ├─ <LineChart> trend                    └─ <TransactionsTable filters={{ wallet: id }} />
    └─ <DataTable> (active+archived dimmed)      edit balance → manual adjustment (background)
 
 <Sources>            useSources           <SourceDetail>      useSource
