@@ -199,8 +199,8 @@ export async function findTransactionSummary(
   const where = `where ${conditions.join(" and ")}`;
   const { rows } = await db.query<TransactionSummaryRow>(
     `select
-       sum(case when from_type in ('external','revenue') and to_type = 'wallet' then amount else 0.00 end)::text as total_in,
-       sum(case when from_type = 'wallet' and to_type in ('external','bill') then amount else 0.00 end)::text as total_out
+       sum(case when method = 'debit' and from_type in ('external','revenue') and to_type = 'wallet' then amount else 0.00 end)::text as total_in,
+       sum(case when method = 'debit' and from_type = 'wallet' and to_type in ('external','bill') then amount else 0.00 end)::text as total_out
      from transactions ${where}`,
     values,
   );
