@@ -193,7 +193,7 @@ Revenue/outcome aggregation rules (unreceived/unpaid at `value`, future recurren
 GET /transactions?from&to&method&category&wallet&cursor&limit
 ```
 
-`method` ∈ `all|debit|credit`. `category`, `wallet` are UUIDs. Summary reflects the active filters.
+`method` ∈ `all|debit|credit`. `category`, `wallet` are UUIDs. Summary reflects the active filters. `totalIn`/`totalOut` only sum `method = 'debit'` rows regardless of the `method` filter's value — credit never moves wallet balance, so it never contributes to these totals (mirrors the dashboard's `cashFlow` calc).
 
 ```ts
 interface TransactionListResponse {
