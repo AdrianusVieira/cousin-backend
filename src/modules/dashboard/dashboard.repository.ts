@@ -42,8 +42,7 @@ export async function findCashFlow(
        sum(case when t.from_type in ('external','revenue') and t.to_type = 'wallet' then t.amount else 0.00 end)::text as "in",
        sum(case when t.from_type = 'wallet' and t.to_type in ('external','bill') then t.amount else 0.00 end)::text as "out"
      from transactions t
-     where t.method = 'debit'
-       and t.date between $1 and $2
+     where t.date between $1 and $2
        and not (t.from_type = 'wallet' and t.to_type = 'wallet')
      group by to_char(t.date, 'YYYY-MM-DD')
      order by date asc`,
