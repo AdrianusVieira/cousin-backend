@@ -64,20 +64,17 @@ export interface PendingCreditRow {
 
 export async function findPendingCreditSummary(
   db: Pool | PoolClient,
-  { from, to }: { from: string; to: string },
 ): Promise<string> {
   const { rows } = await db.query<PendingCreditRow>(
     `select coalesce(sum(amount), 0.00)::text as total
      from transactions
-     where method = 'credit' and settled = false and term between $1::date and $2::date`,
-    [from, to],
+     where method = 'credit' and settled = false`,
   );
   return rows[0]?.total ?? "0.00";
 }
 
 export async function findPendingCreditPerWallet(
   db: Pool | PoolClient,
-  { from, to }: { from: string; to: string },
 ): Promise<PendingCreditPerWalletRow[]> {
   const { rows } = await db.query<PendingCreditPerWalletRow>(
     `select
@@ -86,10 +83,9 @@ export async function findPendingCreditPerWallet(
        coalesce(sum(t.amount), 0.00)::text as total
      from transactions t
      join wallets w on w.id = t.from_id
-     where t.method = 'credit' and t.settled = false and t.term between $1::date and $2::date
+     where t.method = 'credit' and t.settled = false
      group by t.from_id, w.name
      order by w.name asc`,
-    [from, to],
   );
   return rows;
 }

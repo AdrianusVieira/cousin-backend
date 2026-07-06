@@ -43,8 +43,8 @@ export async function getDashboard(query: { from?: string; to?: string }) {
     findDashboardRevenue(pool, { from: priorFrom, to: priorTo }),
     findDashboardOutcome(pool, { from: priorFrom, to: priorTo }),
     findCashFlow(pool, { from, to }),
-    findPendingCreditSummary(pool, { from, to }),
-    findPendingCreditPerWallet(pool, { from, to }),
+    findPendingCreditSummary(pool),
+    findPendingCreditPerWallet(pool),
   ]);
 
   const revenueCents = toCents(revenueStr);

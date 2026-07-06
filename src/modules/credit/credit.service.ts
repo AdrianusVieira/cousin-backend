@@ -1,5 +1,4 @@
 import { pool } from "../../db/pool.js";
-import { subtractMonths, toISODate, today } from "../../lib/date.js";
 import { fromCents, toCents } from "../../lib/money.js";
 import {
   findTransactionsByIds,
@@ -10,18 +9,10 @@ import { findCreditTransactions } from "./credit.repository.js";
 import type { CreditListQuery, SettleInput } from "./credit.schema.js";
 
 export async function listCredit(query: CreditListQuery) {
-  const now = today();
-  const to =
-    query.to ??
-    toISODate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)));
-  const from =
-    query.from ??
-    toISODate(subtractMonths(new Date(`${to}T00:00:00Z`), 3));
-
   const settled =
     query.status === "settled" ? true : query.status === "unsettled" ? false : undefined;
 
-  const rows = await findCreditTransactions(pool, { from, to, settled });
+  const rows = await findCreditTransactions(pool, { settled });
   const transactions = rows.map(mapFullTransaction);
 
   // Group by (walletId, term)
