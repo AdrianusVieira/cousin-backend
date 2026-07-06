@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { toISODate, today } from "../lib/date.js";
 import { computeNextTerm, lookaheadCount } from "../lib/recurrences.js";
 import { createBill } from "../modules/bills/bills.repository.js";
 import {
@@ -32,15 +33,17 @@ export async function runRecurrenceWindowJob(): Promise<void> {
 
 async function processRecurrence(task: WindowJobRow): Promise<void> {
   const totalCount = Number(task.total_count);
-  const futureCount = Number(task.future_count);
+  let futureCount = Number(task.future_count);
 
   if (totalCount === 0) {
     await deleteRecurrence(pool, task.id);
     return;
   }
 
-  const needed = lookaheadCount(task.interval_unit) - futureCount;
-  if (needed <= 0) return;
+  const target = lookaheadCount(task.interval_unit);
+  if (futureCount >= target) return;
+
+  const todayStr = toISODate(today());
 
   const client = await pool.connect();
   try {
@@ -62,14 +65,19 @@ async function processRecurrence(task: WindowJobRow): Promise<void> {
       recurrenceId: task.id,
     };
 
+    // max_term may be far in the past (e.g. the job hasn't run in a while, since
+    // it only runs on server startup / manual trigger, not on a fixed schedule).
+    // Keep materializing until the future-relative-to-today window is full rather
+    // than stopping after a fixed number of instances.
     let lastTerm = task.max_term!;
-    for (let i = 0; i < needed; i++) {
+    while (futureCount < target) {
       lastTerm = computeNextTerm(lastTerm, config);
       if (task.type === "bill") {
         await createBill(client, { ...common, term: lastTerm });
       } else {
         await createRevenue(client, { ...common, term: lastTerm });
       }
+      if (lastTerm >= todayStr) futureCount++;
     }
 
     await client.query("commit");
