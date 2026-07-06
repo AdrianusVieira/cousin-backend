@@ -1,11 +1,8 @@
 import { z } from "zod";
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be an ISO date");
 const uuid = z.string().uuid("Must be a valid UUID");
 
 export const creditListQuerySchema = z.object({
-  from: isoDate.optional(),
-  to: isoDate.optional(),
   status: z.enum(["all", "settled", "unsettled"]).optional(),
 });
 

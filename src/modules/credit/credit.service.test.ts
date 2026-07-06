@@ -13,8 +13,6 @@ import { findCreditTransactions } from "./credit.repository.js";
 import { listCredit } from "./credit.service.js";
 import type { FullTransactionRow } from "../transactions/transactions.types.js";
 
-const FROM = "2026-01-01";
-const TO = "2026-03-31";
 
 const makeCreditRow = (overrides: Partial<FullTransactionRow> = {}): FullTransactionRow => ({
   id: "txn-1",
@@ -52,7 +50,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2" }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups).toHaveLength(1);
     });
@@ -63,7 +61,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", from_id: "wallet-2", from_name: "Wallet B" }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups).toHaveLength(2);
     });
@@ -74,7 +72,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", term: "2026-03-15" }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups).toHaveLength(2);
     });
@@ -84,7 +82,7 @@ describe("listCredit()", () => {
         makeCreditRow({ from_id: "wallet-1", from_name: "My Wallet", term: "2026-03-15" }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups[0]).toMatchObject({
         walletId: "wallet-1",
@@ -101,7 +99,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", settled: true }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups[0]?.settled).toBe(true);
     });
@@ -112,7 +110,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", settled: false }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups[0]?.settled).toBe(false);
     });
@@ -125,7 +123,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", from_id: "wallet-2", from_name: "Wallet B", settled: true }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.summary.openStatements).toBe(1);
     });
@@ -136,7 +134,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", from_id: "wallet-2", from_name: "Wallet B", amount: "300.00", settled: true }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.summary.pendingCredit).toBe("200.00");
     });
@@ -147,7 +145,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", from_id: "wallet-2", from_name: "Wallet B", amount: "300.00", settled: true }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.summary.settledInPeriod).toBe("300.00");
     });
@@ -158,7 +156,7 @@ describe("listCredit()", () => {
         makeCreditRow({ id: "txn-2", amount: "50.00", settled: false }),
       ]);
 
-      const result = await listCredit({ from: FROM, to: TO });
+      const result = await listCredit({});
 
       expect(result.groups[0]?.total).toBe("150.00");
     });
