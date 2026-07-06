@@ -69,7 +69,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 **BE application layer, inside a single DB transaction:**
 - **Wallet balance** — adjusted only for `method = 'debit'`. Create: apply delta. Edit: reverse old, apply new. Delete: reverse. *Open decision in the spec:* balance lives in the app layer (testable, one language) vs. a DB trigger (correct even on out-of-band writes). A non-BE write currently desyncs the balance — confirm the owner's intent before relying on either choice.
 - **Manual Adjustment** — editing a wallet's balance generates a transaction with `from_type = to_type = 'wallet'`, `from_id = to_id = <that wallet>`, for the delta.
-- **Installment expansion** — `installmentTotal > 1` generates N rows sharing a `credit_group_id`, dated one month apart, each carrying its `installment_number`.
+- **Installment expansion** — `installmentTotal > 1` generates N rows sharing a `credit_group_id`, each carrying its `installment_number`. `date` (purchase date) is identical across all N rows; only `term` (due date) advances one month per installment.
 
 **Recurrence job (on startup + manual trigger):**
 - **Recurrence windowing** — maintains a rolling lookahead of materialized Bill/Revenue instances: **3 ahead** for day/week/month, **1 ahead** for year. Clamp `recurrent_day` to the month length at materialization (never rewrite the column). When a recurrence has no remaining instances it is **auto-deleted**; consumed bill/revenue rows survive with `recurrence_id` nulled (`on delete set null`).

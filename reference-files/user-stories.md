@@ -245,7 +245,7 @@
 - Category optional
 - `term` defaults to the 15th of the current month; editable
 - `settled` defaults to false
-- If `installment_total > 1`: N transactions generated, linked by `credit_group_id`, each dated one month apart
+- If `installment_total > 1`: N transactions generated, linked by `credit_group_id`, sharing the same `date`; `term` advances one month per installment
 - Wallet balance not affected
   **As a user, I want to edit a transaction so I can correct mistakes.**
 - All fields editable
