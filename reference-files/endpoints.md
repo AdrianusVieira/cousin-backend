@@ -40,21 +40,11 @@ The polymorphic core. Only this list paginates (cursor-based).
 | `PATCH` | `/transactions/:id` | Body: `amount?`, `date?`, `description?` (nullable), `categoryId?` (nullable) — ≥1 required | Editing one installment affects only that row. Adjusts wallet balance for debit. |
 | `DELETE` | `/transactions/:id` | — | `204`. Reverses wallet-balance delta for debit. |
 
-## Imports
-
-Bulk creation of credit transactions (Batch Operation, see glossary) from an already-normalized
-row set — bank-format parsing (e.g. Banco Inter's CSV export) happens client-side; this endpoint
-is bank-agnostic.
-
-| Method | Path | Query / Body | Returns |
-| :----- | :--- | :----------- | :------ |
-| `POST` | `/transactions/import` | Body: `{ walletId: uuid, rows: [{ amount, date, description?, installmentNumber?, installmentTotal? }] }` (1–1000 rows; `amount` may be negative) | `200` with `{ imported: Transaction[], skipped: SkippedImportRow[], summary }`. Rows are always `method: credit`, `fromType: wallet` (= `walletId`), `toType: external`, `settled: false`, uncategorized. Negative-amount rows and rows duplicating an existing `date+description+amount` on the wallet are skipped (never a `422`) with `reason: "negativeAmount" \| "duplicate"`. Installment rows (`installmentTotal > 1`) reuse an existing `credit_group_id` when a matching series (same wallet + description + installmentTotal) is found, so installments imported across separate uploads stay grouped. |
-
 ## Credit
 
 | Method | Path | Query / Body | Returns |
 | :----- | :--- | :----------- | :------ |
-| `GET` | `/credit` | `from?`, `to?`, `status?` (`all\|settled\|unsettled`) | `{ summary, groups }` — groups keyed by wallet + term. |
+| `GET` | `/credit` | `status?` (`all\|settled\|unsettled`) | `{ summary, groups }` — groups keyed by wallet + term, across all terms (not date-windowed). |
 | `POST` | `/credit/settle` | Body: `{ transactionIds: UUID[] }` (≥1) | Updated `Transaction[]`; sets `settled = true`. One id = row settle, many = group settle. |
 
 ## Bills
