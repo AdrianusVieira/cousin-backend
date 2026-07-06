@@ -27,6 +27,7 @@ const importRowSchema = z
 
 export const importTransactionsSchema = z.object({
   rows: z.array(importRowSchema).min(1, "At least one row is required").max(1000, "Too many rows in one import"),
+  term: isoDate,
   walletId: uuid,
 });
 

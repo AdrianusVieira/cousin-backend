@@ -25,6 +25,7 @@ const WALLET_ID = "11111111-1111-4111-8111-111111111111";
 
 const baseInput = (rows: ImportTransactionsInput["rows"]): ImportTransactionsInput => ({
   rows,
+  term: "2026-07-15",
   walletId: WALLET_ID,
 });
 
@@ -132,11 +133,11 @@ describe("importTransactions()", () => {
     expect(call.installmentTotal).toBeUndefined();
   });
 
-  it("anchors term to the row's own month, not today", async () => {
+  it("assigns every row the batch's shared statement term, regardless of the row's own date", async () => {
     await importTransactions(baseInput([{ amount: "10.00", date: "2026-02-20", description: "Uber" }]));
 
     const call = vi.mocked(insertTransaction).mock.calls[0]![1];
-    expect(call.term).toBe("2026-02-15");
+    expect(call.term).toBe("2026-07-15");
   });
 
   it("computes summary counts across a mixed batch", async () => {
