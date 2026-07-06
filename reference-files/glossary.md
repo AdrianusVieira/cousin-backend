@@ -7,8 +7,8 @@ The only permitted form of "deletion" for core entities (Wallets, Categories, So
 ## Batch Operation
 
 Functionality that allows multiple transactions to be added or edited in a single action.
-Bulk *settling* is `POST /credit/settle`; bulk *creation* (e.g. importing a bank's CSV statement)
-is `POST /transactions/import` — see Imports in `endpoints.md`.
+Bulk *settling* is `POST /credit/settle`; bulk *creation* is `POST /transactions` with
+`installmentTotal > 1` (see Transactions in `endpoints.md`).
 
 ## Bill
 
