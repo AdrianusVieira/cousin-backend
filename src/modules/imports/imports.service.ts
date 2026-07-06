@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { pool } from "../../db/pool.js";
-import { toISODate } from "../../lib/date.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toCents } from "../../lib/money.js";
 import { findWalletById } from "../wallets/wallets.repository.js";
@@ -16,16 +15,6 @@ function normalizeDescription(description?: string): string {
 
 function dedupKey(date: string, description: string, amount: string): string {
   return `${date}|${description}|${amount}`;
-}
-
-/**
- * Statement date for an imported row: the 15th of the row's own month — deliberately not "today",
- * since import is inherently backdated and anchoring to today would misfile e.g. a February
- * purchase into the current month's Credit-page statement grouping.
- */
-function defaultTermFor(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  return toISODate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 15)));
 }
 
 export async function importTransactions(input: ImportTransactionsInput): Promise<ImportTransactionsResult> {
@@ -90,7 +79,7 @@ export async function importTransactions(input: ImportTransactionsInput): Promis
         installmentTotal: hasInstallments ? row.installmentTotal : undefined,
         method: "credit",
         settled: false,
-        term: defaultTermFor(row.date),
+        term: input.term,
         toType: "external",
       });
       importedIds.push(id);
