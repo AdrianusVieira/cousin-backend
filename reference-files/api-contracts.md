@@ -236,7 +236,7 @@ interface CreateCreditTransaction {
 }
 ```
 
-**Returns `201` with `Transaction[]`** — one element normally, N when `installmentTotal > 1` (the generated group, dated one month apart, sharing `creditGroupId`). The BE validates the `from`/`to` pair against the six legal combinations and that referenced entities exist; invalid pairs → `422`.
+**Returns `201` with `Transaction[]`** — one element normally, N when `installmentTotal > 1` (the generated group, sharing `creditGroupId` and `date`, `term` advancing one month per installment). The BE validates the `from`/`to` pair against the six legal combinations and that referenced entities exist; invalid pairs → `422`.
 
 ```
 GET    /transactions/:id        -> Transaction

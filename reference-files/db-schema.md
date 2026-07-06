@@ -236,7 +236,7 @@ What the DB enforces vs. what the BE owns. This is the part worth reviewing.
 
 - **Wallet balance** — adjusted only for `method = 'debit'`. On create: apply delta. On edit: reverse old, apply new. On delete: reverse. See the open call below.
 - **Manual Adjustment** — editing a wallet's balance via the API generates a transaction with `from_type = to_type = 'wallet'` and `from_id = to_id = <wallet>` for the delta.
-- **Installment expansion** — `installment_total > 1` generates N rows sharing a `credit_group_id`, dated one month apart, each carrying its `installment_number`.
+- **Installment expansion** — `installment_total > 1` generates N rows sharing a `credit_group_id`, each carrying its `installment_number`. `date` (purchase date) is identical across all N rows; only `term` (due date) advances one month per installment.
 - **Polymorphic referential integrity** — because `from_id` / `to_id` have no FK, the BE must validate that the referenced Wallet / Revenue / Bill exists and that the `from_type`→`to_type` pair is one of the six legal combinations before insert.
 
 ### Background job (scheduled)

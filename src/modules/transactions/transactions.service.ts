@@ -221,13 +221,12 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
 
       const creditGroupId = randomUUID();
       const ids: string[] = [];
-      let currentDate = new Date(`${input.date}T00:00:00Z`);
       let currentTermDate = new Date(`${term}T00:00:00Z`);
 
       for (let i = 1; i <= installmentTotal; i++) {
         const id = await insertTransaction(client, {
           amount: input.amount,
-          date: toISODate(currentDate),
+          date: input.date,
           description: input.description,
           method: "credit",
           categoryId: input.categoryId,
@@ -243,7 +242,6 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
         });
         ids.push(id);
 
-        currentDate.setUTCMonth(currentDate.getUTCMonth() + 1);
         currentTermDate.setUTCMonth(currentTermDate.getUTCMonth() + 1);
       }
 
