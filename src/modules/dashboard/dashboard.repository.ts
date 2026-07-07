@@ -38,14 +38,15 @@ export async function findCashFlow(
 ): Promise<CashFlowRow[]> {
   const { rows } = await db.query<CashFlowRow>(
     `select
-       to_char(t.date, 'YYYY-MM-DD') as date,
-       sum(case when t.from_type in ('external','revenue') and t.to_type = 'wallet' then t.amount else 0.00 end)::text as "in",
-       sum(case when t.from_type = 'wallet' and t.to_type in ('external','bill') then t.amount else 0.00 end)::text as "out"
-     from transactions t
-     where t.date between $1 and $2
+       to_char(d.date, 'YYYY-MM-DD') as date,
+       coalesce(sum(case when t.from_type in ('external','revenue') and t.to_type = 'wallet' then t.amount end), 0.00)::text as "in",
+       coalesce(sum(case when t.from_type = 'wallet' and t.to_type in ('external','bill') then t.amount end), 0.00)::text as "out"
+     from generate_series($1::date, $2::date, interval '1 day') as d(date)
+     left join transactions t
+       on t.date = d.date
        and not (t.from_type = 'wallet' and t.to_type = 'wallet')
-     group by to_char(t.date, 'YYYY-MM-DD')
-     order by date asc`,
+     group by d.date
+     order by d.date asc`,
     [from, to],
   );
   return rows;
