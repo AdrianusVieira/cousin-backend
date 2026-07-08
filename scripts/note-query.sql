@@ -29,23 +29,34 @@ SELECT json_build_object(
      FROM transactions t, d
      WHERE (t.created_at AT TIME ZONE 'America/Sao_Paulo')::date = d.target
      ORDER BY t.created_at ASC) r), '[]'::json),
+  -- Only bills that can affect any section: due on the target day, currently
+  -- paid, or currently flagged. Anything else contributes nothing to the note
+  -- or the snapshot, so it is omitted to keep the payload small.
   'bills', coalesce((SELECT json_agg(r) FROM (
      SELECT b.id,b.name,b.value::text AS value,b.term::text AS term,b.paid,
        ((b.paid AND NOT EXISTS(SELECT 1 FROM transactions x WHERE x.to_type='bill' AND x.to_id=b.id))
         OR (NOT b.paid AND b.term < d.target)) AS flagged
-     FROM bills b, d) r), '[]'::json),
+     FROM bills b, d
+     WHERE b.paid OR b.term <= d.target) r), '[]'::json),
   'revenues', coalesce((SELECT json_agg(r) FROM (
      SELECT rv.id,rv.name,rv.value::text AS value,rv.term::text AS term,rv.received,
        ((rv.received AND NOT EXISTS(SELECT 1 FROM transactions x WHERE x.from_type='revenue' AND x.from_id=rv.id))
         OR (NOT rv.received AND rv.term < d.target)) AS flagged
-     FROM revenues rv, d) r), '[]'::json),
+     FROM revenues rv, d
+     WHERE rv.received OR rv.term <= d.target) r), '[]'::json),
   'wallets', coalesce((SELECT json_agg(r) FROM (SELECT id,name,balance::text AS balance,archived FROM wallets ORDER BY name) r), '[]'::json),
+  -- Full rows only for recurrences created on the target day (for the "created"
+  -- list). Active detection/diff/snapshot use the compact id array below.
   'recurrences', coalesce((SELECT json_agg(r) FROM (
      SELECT rc.id,rc.is_variable,rc.interval_unit,rc.interval_value,rc.recurrent_day,
             rc.estimated_value::text AS estimated_value,
             to_char((rc.created_at AT TIME ZONE 'America/Sao_Paulo')::date,'YYYY-MM-DD') AS created_date,
-            (EXISTS(SELECT 1 FROM bills b WHERE b.recurrence_id=rc.id) OR EXISTS(SELECT 1 FROM revenues r2 WHERE r2.recurrence_id=rc.id)) AS active
-     FROM recurrences rc) r), '[]'::json),
+            true AS active
+     FROM recurrences rc, d
+     WHERE (rc.created_at AT TIME ZONE 'America/Sao_Paulo')::date = d.target) r), '[]'::json),
+  'activeRecurrenceIds', coalesce((SELECT json_agg(rc.id) FROM recurrences rc
+     WHERE EXISTS(SELECT 1 FROM bills b WHERE b.recurrence_id=rc.id)
+        OR EXISTS(SELECT 1 FROM revenues r2 WHERE r2.recurrence_id=rc.id)), '[]'::json),
   'dayFlow', (SELECT json_build_object(
        'in', coalesce(sum(CASE WHEN t.from_type IN ('external','revenue') AND t.to_type='wallet' THEN t.amount ELSE 0 END),0)::text,
        'out', coalesce(sum(CASE WHEN t.from_type='wallet' AND t.to_type IN ('external','bill') THEN t.amount ELSE 0 END),0)::text)
