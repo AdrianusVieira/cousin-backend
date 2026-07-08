@@ -223,6 +223,7 @@ function normalize(data) {
   data.revenues ??= [];
   data.wallets ??= [];
   data.recurrences ??= [];
+  data.activeRecurrenceIds ??= data.recurrences.filter((rc) => rc.active).map((rc) => rc.id);
   data.pendingPerWallet ??= [];
   data.categories ??= [];
   data.dayFlow ??= { in: "0", out: "0" };
@@ -252,7 +253,7 @@ function buildSnapshot(data) {
     receivedRevenueIds: data.revenues.filter((r) => r.received).map((r) => r.id),
     flaggedBillIds: data.bills.filter((b) => b.flagged).map((b) => b.id),
     flaggedRevenueIds: data.revenues.filter((r) => r.flagged).map((r) => r.id),
-    activeRecurrenceIds: data.recurrences.filter((rc) => rc.active).map((rc) => rc.id),
+    activeRecurrenceIds: data.activeRecurrenceIds,
   };
 }
 function saveSnapshot(dir, snap) {
@@ -350,7 +351,7 @@ export function render(data, prev) {
   L.push("### Recurrences created / deactivated");
   const createdRec = data.recurrences.filter((rc) => rc.created_date === D);
   const deactivated = prev
-    ? prev.activeRecurrenceIds.filter((id) => !data.recurrences.some((rc) => rc.id === id && rc.active))
+    ? prev.activeRecurrenceIds.filter((id) => !data.activeRecurrenceIds.includes(id))
     : [];
   if (createdRec.length === 0 && deactivated.length === 0) {
     L.push("_No recurrence changes._");
