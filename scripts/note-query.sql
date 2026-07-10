@@ -7,6 +7,16 @@
 --   WITH d AS (SELECT DATE '2026-07-07' AS target)
 WITH d AS (
   SELECT ((now() AT TIME ZONE 'America/Sao_Paulo')::date - 1) AS target
+),
+-- Previous calendar month relative to the target date. When `target` is the
+-- 1st of a month this is exactly "last month"; the renderer only emits the
+-- month-in-review section when target is a first-of-month, so the window is
+-- always a full calendar month there.
+m AS (
+  SELECT
+    date_trunc('month', (SELECT target FROM d) - interval '1 day')::date AS mstart,
+    (date_trunc('month', (SELECT target FROM d))::date - 1)              AS mend,
+    (EXTRACT(DAY FROM (SELECT target FROM d)) = 1)                        AS is_first
 )
 SELECT json_build_object(
   'date', (SELECT to_char(target,'YYYY-MM-DD') FROM d),
@@ -69,5 +79,58 @@ SELECT json_build_object(
        SELECT w.id AS wallet_id, w.name AS wallet_name, coalesce(sum(t.amount),0)::text AS total
        FROM transactions t JOIN wallets w ON w.id=t.from_id
        WHERE t.method='credit' AND t.settled=false GROUP BY w.id,w.name ORDER BY w.name) r), '[]'::json),
-  'categories', coalesce((SELECT json_agg(r) FROM (SELECT id,name FROM categories) r), '[]'::json)
+  'categories', coalesce((SELECT json_agg(r) FROM (SELECT id,name FROM categories) r), '[]'::json),
+  -- Previous-month rollup. Cash-flow figures are actual transactions dated in
+  -- the month (internal transfers / manual adjustments excluded, matching the
+  -- daily dayFlow convention). Net/saving-rate are derived in the renderer.
+  'monthSummary', (SELECT json_build_object(
+     'month',        to_char(m.mstart,'YYYY-MM'),
+     'monthStart',   to_char(m.mstart,'YYYY-MM-DD'),
+     'monthEnd',     to_char(m.mend,'YYYY-MM-DD'),
+     'isFirstOfMonth', m.is_first,
+     'daysInMonth',  (m.mend - m.mstart + 1),
+     'income', (SELECT coalesce(sum(t.amount),0) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.to_type='wallet' AND t.from_type IN ('external','revenue'))::text,
+     'outcome', (SELECT coalesce(sum(t.amount),0) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type IN ('external','bill'))::text,
+     'billsPaid', (SELECT coalesce(sum(t.amount),0) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type='bill')::text,
+     'txnCount', (SELECT count(*) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend),
+     'outflowTxnCount', (SELECT count(*) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type IN ('external','bill')),
+     'uncategorizedOut', (SELECT coalesce(sum(t.amount),0) FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type IN ('external','bill')
+                   AND t.category_id IS NULL)::text,
+     'byCategory', coalesce((SELECT json_agg(r) FROM (
+                 SELECT c.id AS category_id, c.name AS name,
+                        sum(t.amount)::text AS total, count(*) AS cnt
+                 FROM transactions t JOIN categories c ON c.id=t.category_id
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type IN ('external','bill')
+                 GROUP BY c.id,c.name ORDER BY sum(t.amount) DESC) r), '[]'::json),
+     'largestExpense', (SELECT json_build_object(
+                 'amount', t.amount::text, 'description', t.description,
+                 'date', t.date::text, 'method', t.method)
+                 FROM transactions t
+                 WHERE t.date BETWEEN m.mstart AND m.mend
+                   AND t.from_type='wallet' AND t.to_type IN ('external','bill')
+                 ORDER BY t.amount DESC LIMIT 1),
+     'billsDueInMonth', (SELECT json_build_object(
+                 'count', count(*), 'total', coalesce(sum(value),0)::text,
+                 'paidCount', count(*) FILTER (WHERE paid),
+                 'paidTotal', coalesce(sum(value) FILTER (WHERE paid),0)::text)
+                 FROM bills WHERE term BETWEEN m.mstart AND m.mend),
+     'revenuesDueInMonth', (SELECT json_build_object(
+                 'count', count(*), 'total', coalesce(sum(value),0)::text,
+                 'receivedCount', count(*) FILTER (WHERE received),
+                 'receivedTotal', coalesce(sum(value) FILTER (WHERE received),0)::text)
+                 FROM revenues WHERE term BETWEEN m.mstart AND m.mend),
+     'patrimony', (SELECT coalesce(sum(balance),0) FROM wallets WHERE NOT archived)::text
+   ) FROM m)
 ) AS payload;

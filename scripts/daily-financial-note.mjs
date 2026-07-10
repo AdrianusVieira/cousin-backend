@@ -164,9 +164,20 @@ const SIGN_SQL = `case
 
 async function gather(db) {
   const q = (text, params) => db.query(text, params).then((r) => r.rows);
+  // Previous calendar month bounds relative to D (used for the month-in-review
+  // section, which the renderer only emits on a first-of-month note).
+  const mBounds = (
+    await q(
+      `select date_trunc('month', $1::date - interval '1 day')::date as mstart,
+              (date_trunc('month', $1::date)::date - 1) as mend,
+              (extract(day from $1::date) = 1) as is_first`,
+      [D],
+    )
+  )[0];
   const [
     newTxns, bills, revenues, wallets, recurrences,
     dayFlow, dashboardTotals, pendingTotal, pendingPerWallet, categories,
+    monthAgg, monthByCategory, monthLargest, monthBills, monthRevenues,
   ] = await Promise.all([
     q(`select t.id, t.amount::text as amount, t.date::text as date, t.method,
               t.description, t.from_type, t.from_id, t.to_type, t.to_id, t.category_id,
@@ -208,11 +219,62 @@ async function gather(db) {
         where t.method='credit' and t.settled=false
         group by w.id, w.name order by w.name asc`),
     q(`select id, name from categories`),
+    q(`select
+         coalesce(sum(case when t.to_type='wallet' and t.from_type in ('external','revenue') then t.amount else 0 end),0)::text as income,
+         coalesce(sum(case when t.from_type='wallet' and t.to_type in ('external','bill') then t.amount else 0 end),0)::text as outcome,
+         coalesce(sum(case when t.from_type='wallet' and t.to_type='bill' then t.amount else 0 end),0)::text as "billsPaid",
+         count(*) as "txnCount",
+         count(*) filter (where t.from_type='wallet' and t.to_type in ('external','bill')) as "outflowTxnCount",
+         coalesce(sum(case when t.from_type='wallet' and t.to_type in ('external','bill') and t.category_id is null then t.amount else 0 end),0)::text as "uncategorizedOut"
+       from transactions t where t.date between $1::date and $2::date`, [mBounds.mstart, mBounds.mend]),
+    q(`select c.id as category_id, c.name as name, sum(t.amount)::text as total, count(*) as cnt
+         from transactions t join categories c on c.id=t.category_id
+        where t.date between $1::date and $2::date
+          and t.from_type='wallet' and t.to_type in ('external','bill')
+        group by c.id,c.name order by sum(t.amount) desc`, [mBounds.mstart, mBounds.mend]),
+    q(`select t.amount::text as amount, t.description, t.date::text as date, t.method
+         from transactions t
+        where t.date between $1::date and $2::date
+          and t.from_type='wallet' and t.to_type in ('external','bill')
+        order by t.amount desc limit 1`, [mBounds.mstart, mBounds.mend]),
+    q(`select count(*) as count, coalesce(sum(value),0)::text as total,
+              count(*) filter (where paid) as "paidCount",
+              coalesce(sum(value) filter (where paid),0)::text as "paidTotal"
+         from bills where term between $1::date and $2::date`, [mBounds.mstart, mBounds.mend]),
+    q(`select count(*) as count, coalesce(sum(value),0)::text as total,
+              count(*) filter (where received) as "receivedCount",
+              coalesce(sum(value) filter (where received),0)::text as "receivedTotal"
+         from revenues where term between $1::date and $2::date`, [mBounds.mstart, mBounds.mend]),
   ]);
+  const patrimonyRow = (
+    await q(`select coalesce(sum(balance),0)::text as total from wallets where not archived`)
+  )[0];
+  const monthSummary = {
+    month: String(mBounds.mstart).slice(0, 7),
+    monthStart: String(mBounds.mstart).slice(0, 10),
+    monthEnd: String(mBounds.mend).slice(0, 10),
+    isFirstOfMonth: mBounds.is_first,
+    daysInMonth:
+      Math.round(
+        (new Date(mBounds.mend) - new Date(mBounds.mstart)) / 86400000,
+      ) + 1,
+    income: monthAgg[0].income,
+    outcome: monthAgg[0].outcome,
+    billsPaid: monthAgg[0].billsPaid,
+    txnCount: Number(monthAgg[0].txnCount),
+    outflowTxnCount: Number(monthAgg[0].outflowTxnCount),
+    uncategorizedOut: monthAgg[0].uncategorizedOut,
+    byCategory: monthByCategory,
+    largestExpense: monthLargest[0] || null,
+    billsDueInMonth: monthBills[0],
+    revenuesDueInMonth: monthRevenues[0],
+    patrimony: patrimonyRow.total,
+  };
   return {
     newTxns, bills, revenues, wallets, recurrences,
     dayFlow: dayFlow[0], dashboardTotals: dashboardTotals[0],
     pendingTotal: pendingTotal[0].total, pendingPerWallet, categories,
+    monthSummary,
   };
 }
 
@@ -229,6 +291,7 @@ function normalize(data) {
   data.dayFlow ??= { in: "0", out: "0" };
   data.dashboardTotals ??= { revenue: "0", outcome: "0" };
   data.pendingTotal ??= "0";
+  data.monthSummary ??= null;
   data.walletName = Object.fromEntries((data.wallets || []).map((w) => [w.id, w.name]));
   data.categoryName = Object.fromEntries((data.categories || []).map((c) => [c.id, c.name]));
   return data;
@@ -281,12 +344,74 @@ function txnCounterparty(t, data) {
   return `${who(t.from_type, t.from_id)} → ${who(t.to_type, t.to_id)}`;
 }
 
+// Month-in-review block. Returns an array of markdown lines (empty when there
+// is no month summary). Only emitted by render() when the note date is the
+// first day of a month, so it summarizes the calendar month that just ended.
+function renderMonthSummary(data) {
+  const ms = data.monthSummary;
+  if (!ms) return [];
+  const income = Number(ms.income ?? 0);
+  const outcome = Number(ms.outcome ?? 0);
+  const net = income - outcome;
+  const savingRate = income > 0 ? (net / income) * 100 : null;
+  const days = Number(ms.daysInMonth ?? 0) || 1;
+  const L = [];
+  L.push(`## 📅 Month in review — ${ms.month}`);
+  L.push("");
+  L.push(`_Covering ${ms.monthStart} → ${ms.monthEnd} (${ms.daysInMonth} days). Cash-flow figures are actual transactions across wallets; internal transfers excluded._`);
+  L.push("");
+  L.push(`- **Total income:** ${money(income)}`);
+  L.push(`- **Total outcome:** ${money(outcome)}`);
+  L.push(`- **Net balance:** ${signed(net)}`);
+  L.push(`- **Saving rate:** ${savingRate === null ? "n/a (no income)" : savingRate.toFixed(1) + "%"}`);
+  L.push(`- **Patrimony (liquid wallet balances, current):** ${money(ms.patrimony)}`);
+  L.push(`- **Avg daily spend:** ${money(outcome / days)}`);
+  if (ms.billsPaid !== undefined) L.push(`- **Paid toward bills:** ${money(ms.billsPaid)}`);
+  L.push(`- **Transactions:** ${ms.txnCount ?? 0} total${ms.outflowTxnCount !== undefined ? ` (${ms.outflowTxnCount} outflows)` : ""}`);
+  if (ms.billsDueInMonth) {
+    const b = ms.billsDueInMonth;
+    L.push(`- **Bills due in month:** ${money(b.total)} across ${b.count} (paid ${b.paidCount}/${b.count} · ${money(b.paidTotal)})`);
+  }
+  if (ms.revenuesDueInMonth) {
+    const r = ms.revenuesDueInMonth;
+    L.push(`- **Revenues due in month:** ${money(r.total)} across ${r.count} (received ${r.receivedCount}/${r.count} · ${money(r.receivedTotal)})`);
+  }
+  if (ms.largestExpense && ms.largestExpense.amount) {
+    const le = ms.largestExpense;
+    L.push(`- **Largest expense:** ${money(le.amount)}${le.description ? ` — ${le.description}` : ""} (${le.date})`);
+  }
+  L.push("");
+  L.push("### Spending by category");
+  const cats = ms.byCategory || [];
+  const unc = Number(ms.uncategorizedOut ?? 0);
+  if (cats.length === 0 && unc === 0) {
+    L.push("_No outflows recorded._");
+  } else {
+    for (const c of cats) {
+      const t = Number(c.total);
+      const pct = outcome > 0 ? `${((t / outcome) * 100).toFixed(1)}%` : "—";
+      L.push(`- ${c.name}: ${money(t)} (${pct}${c.cnt ? `, ${c.cnt} txn` : ""})`);
+    }
+    if (unc > 0) {
+      const pct = outcome > 0 ? `${((unc / outcome) * 100).toFixed(1)}%` : "—";
+      L.push(`- Uncategorized: ${money(unc)} (${pct})`);
+    }
+  }
+  L.push("");
+  L.push("---");
+  L.push("");
+  return L;
+}
+
 export function render(data, prev) {
   const L = [];
   L.push(`# ${D} — Financial daily note`);
   L.push("");
   L.push("#Cousin");
   L.push("");
+
+  // On the first day of a month, lead with a review of the month that ended.
+  if (D.slice(-2) === "01") for (const line of renderMonthSummary(data)) L.push(line);
 
   L.push("## Activity that day");
   L.push("");
@@ -461,10 +586,14 @@ async function main() {
   const outPath = path.join(notesDir, `${D}.md`);
   fs.writeFileSync(outPath, note);
   if (!NO_STATE) saveSnapshot(notesDir, buildSnapshot(data));
+  const monthNote =
+    D.slice(-2) === "01" && data.monthSummary
+      ? ` Month-in-review for ${data.monthSummary.month} included.`
+      : "";
   console.log(
     `Wrote ${outPath} (via ${via}). ` +
       `Txns that day: ${data.newTxns.length}; bills due: ${data.bills.filter((b) => b.term === D).length}; ` +
-      `revenues due: ${data.revenues.filter((r) => r.term === D).length}.`,
+      `revenues due: ${data.revenues.filter((r) => r.term === D).length}.${monthNote}`,
   );
 }
 
