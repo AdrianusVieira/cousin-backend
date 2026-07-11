@@ -81,7 +81,7 @@
 | `created_at`    | timestamp | required                |
 | `updated_at`    | timestamp | required                |
 
-`paid` is a manual toggle, independent of transaction linking. Flagged (computed) when: `paid = true` and no transaction references this bill, or `paid = false` and `term < today`.
+`paid` is a manual toggle, independent of transaction linking. Flagged (computed) when: `paid = false` and `term < today`.
 
 **Relationships:** References Source via `source_id`. References Recurrence via `recurrence_id`. Referenced by Transaction as `to`.
 
@@ -102,7 +102,7 @@
 | `created_at`    | timestamp | required                |
 | `updated_at`    | timestamp | required                |
 
-`received` is a manual toggle, independent of transaction linking. Flagged (computed) when: `received = true` and no transaction references this revenue, or `received = false` and `term < today`.
+`received` is a manual toggle, independent of transaction linking. Flagged (computed) when: `received = false` and `term < today`.
 
 **Relationships:** References Source via `source_id`. References Recurrence via `recurrence_id`. Referenced by Transaction as `from`.
 

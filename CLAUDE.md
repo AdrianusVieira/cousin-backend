@@ -62,7 +62,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 **DB enforces only** column/check constraints and `updated_at` (via the `set_updated_at()` trigger). That trigger is the *only* business logic in the database.
 
 **Computed by the BE at read time (never stored):**
-- `flagged` on Bill/Revenue: `(paid && !hasLinkedTxn) || (!paid && term < today)` (and the `received` equivalent).
+- `flagged` on Bill/Revenue: `!paid && term < today` (and the `received` equivalent).
 - Transaction `kind` and `sign` (from the from/to combination).
 - `hasOpenItems` (Source), `hasLinkedTransaction` (Bill/Revenue), `active` (Recurrence).
 

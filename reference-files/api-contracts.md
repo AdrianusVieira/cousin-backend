@@ -102,7 +102,7 @@ interface Bill {
   sourceId: UUID;
   recurrenceId: UUID | null;
   hasLinkedTransaction: boolean; // computed
-  flagged: boolean; // computed: (paid && !linked) || (!paid && term < today)
+  flagged: boolean; // computed: !paid && term < today
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -118,7 +118,7 @@ interface Revenue {
   sourceId: UUID;
   recurrenceId: UUID | null;
   hasLinkedTransaction: boolean; // computed
-  flagged: boolean; // computed: (received && !linked) || (!received && term < today)
+  flagged: boolean; // computed: !received && term < today
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
