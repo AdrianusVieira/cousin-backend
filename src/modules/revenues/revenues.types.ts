@@ -41,8 +41,7 @@ export function rowToRevenue(row: RevenueWithMeta, todayStr: string): Revenue {
     sourceId: row.source_id,
     recurrenceId: row.recurrence_id,
     hasLinkedTransaction: row.has_linked_transaction,
-    flagged:
-      (row.received && !row.has_linked_transaction) || (!row.received && row.term < todayStr),
+    flagged: !row.received && row.term < todayStr,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -41,7 +41,7 @@ export function rowToBill(row: BillWithMeta, todayStr: string): Bill {
     sourceId: row.source_id,
     recurrenceId: row.recurrence_id,
     hasLinkedTransaction: row.has_linked_transaction,
-    flagged: (row.paid && !row.has_linked_transaction) || (!row.paid && row.term < todayStr),
+    flagged: !row.paid && row.term < todayStr,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

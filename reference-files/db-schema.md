@@ -227,7 +227,7 @@ What the DB enforces vs. what the BE owns. This is the part worth reviewing.
 ### Computed, never stored
 
 - **`flagged`** (Bill / Revenue) — a derived view-model field, computed per query:
-  `(paid and not has_linked_txn) or (not paid and term < current_date)`
+  `not paid and term < current_date`
   (and the `received` equivalent for revenues). Returned by the API, absent from the table.
 - **Transaction sign** (`+`/`−`/blank) — derived from the `from`/`to` type combination at read time. Not a column.
 - **Analytical meaning** (revenue realized / bill paid / internal transfer / manual adjustment) — derived from the `from`/`to` combination. The matrix in `glossary.md` is the lookup; it lives in the BE, not the schema.
