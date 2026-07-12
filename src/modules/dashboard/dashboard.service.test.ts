@@ -74,6 +74,29 @@ describe("getDashboard()", () => {
     });
   });
 
+  describe("net", () => {
+    it("should compute net as income total minus outcome total", async () => {
+      setupMocks({
+        inflow: "800.00",
+        outflow: "450.00",
+        unpaidBills: "150.00",
+        unreceivedRevenues: "200.00",
+      });
+
+      const result = await getDashboard({ from: FROM, to: TO });
+
+      expect(result.net).toBe("400.00");
+    });
+
+    it("should produce a negative net when outcome exceeds income", async () => {
+      setupMocks({ inflow: "400.00", outflow: "600.00" });
+
+      const result = await getDashboard({ from: FROM, to: TO });
+
+      expect(result.net).toBe("-200.00");
+    });
+  });
+
   describe("savingsRate", () => {
     it("should express net as a percentage of income", async () => {
       setupMocks({ inflow: "1000.00", outflow: "600.00" });

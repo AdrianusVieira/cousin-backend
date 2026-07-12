@@ -179,7 +179,8 @@ interface DashboardResponse {
     transactions: Money; // outflow transactions (moneyOut + billPaid) with date in period
     unpaid: Money; // unpaid bills with term in period
   };
-  savingsRate: number; // percent: (income.total − outcome.total) / income.total
+  net: Money; // income.total − outcome.total
+  savingsRate: number; // percent: net / income.total
   cashFlow: Array<{ date: ISODate; in: Money; out: Money }>;
   pendingCredit: {
     total: Money;
