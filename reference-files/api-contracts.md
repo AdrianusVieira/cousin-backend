@@ -169,12 +169,17 @@ GET /dashboard?from&to
 
 ```ts
 interface DashboardResponse {
-  revenue: Money;
-  outcome: Money;
-  net: Money;
-  savingsRate: number; // percent
-  savingsRateDelta: number | null; // pts vs prior equal-length period; null if no prior data
-  netDelta: Money | null; // vs prior period; null if unavailable
+  income: {
+    total: Money; // transactions + unreceived
+    transactions: Money; // inflow transactions (moneyIn + revenueRealized) with date in period
+    unreceived: Money; // unreceived revenues with term in period
+  };
+  outcome: {
+    total: Money; // transactions + unpaid
+    transactions: Money; // outflow transactions (moneyOut + billPaid) with date in period
+    unpaid: Money; // unpaid bills with term in period
+  };
+  savingsRate: number; // percent: (income.total − outcome.total) / income.total
   cashFlow: Array<{ date: ISODate; in: Money; out: Money }>;
   pendingCredit: {
     total: Money;
@@ -183,7 +188,7 @@ interface DashboardResponse {
 }
 ```
 
-Revenue/outcome aggregation rules (unreceived/unpaid at `value`, future recurrence instances at `estimatedValue` if variable else exact `value`, settled items excluded, internal transfers excluded) are computed server-side per `user_stories.md`.
+Income/outcome combine actual money movement (transactions, keyed on `date`) with still-open obligations (unpaid bills / unreceived revenues, keyed on `term`). A paid bill contributes via whichever transaction settled it — never twice — regardless of whether the payment was registered as `billPaid` or `moneyOut`. A bill/revenue marked paid/received with no transaction registered at all is not counted. Internal transfers and manual adjustments are excluded. Prior-period deltas were removed: the unpaid/unreceived components are point-in-time measures, so a prior-window comparison is not meaningful.
 
 ---
 
