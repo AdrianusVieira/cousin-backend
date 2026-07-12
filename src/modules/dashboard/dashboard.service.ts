@@ -56,6 +56,7 @@ export async function getDashboard(query: { from?: string; to?: string }) {
       transactions: outflowStr,
       unpaid: unpaidBillsStr,
     },
+    net: fromCents(netCents),
     savingsRate: savingsRate(incomeCents, netCents),
     cashFlow: cashFlow.map((r) => ({ date: r.date, in: r.in, out: r.out })),
     pendingCredit: {
