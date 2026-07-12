@@ -2,19 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../db/pool.js", () => ({ pool: {} }));
 vi.mock("./dashboard.repository.js", () => ({
-  findDashboardRevenue: vi.fn(),
-  findDashboardOutcome: vi.fn(),
   findCashFlow: vi.fn(),
-  findPendingCreditSummary: vi.fn(),
+  findInflowTransactions: vi.fn(),
+  findOutflowTransactions: vi.fn(),
   findPendingCreditPerWallet: vi.fn(),
+  findPendingCreditSummary: vi.fn(),
+  findUnpaidBills: vi.fn(),
+  findUnreceivedRevenues: vi.fn(),
 }));
 
 import {
   findCashFlow,
-  findDashboardOutcome,
-  findDashboardRevenue,
+  findInflowTransactions,
+  findOutflowTransactions,
   findPendingCreditPerWallet,
   findPendingCreditSummary,
+  findUnpaidBills,
+  findUnreceivedRevenues,
 } from "./dashboard.repository.js";
 import { getDashboard } from "./dashboard.service.js";
 
@@ -22,18 +26,16 @@ const FROM = "2026-01-01";
 const TO = "2026-03-31";
 
 function setupMocks({
-  revenue = "0.00",
-  outcome = "0.00",
-  priorRevenue = "0.00",
-  priorOutcome = "0.00",
+  inflow = "0.00",
+  outflow = "0.00",
+  unpaidBills = "0.00",
+  unreceivedRevenues = "0.00",
   cashFlow = [] as { date: string; in: string; out: string }[],
 } = {}) {
-  vi.mocked(findDashboardRevenue)
-    .mockResolvedValueOnce(revenue)
-    .mockResolvedValueOnce(priorRevenue);
-  vi.mocked(findDashboardOutcome)
-    .mockResolvedValueOnce(outcome)
-    .mockResolvedValueOnce(priorOutcome);
+  vi.mocked(findInflowTransactions).mockResolvedValueOnce(inflow);
+  vi.mocked(findOutflowTransactions).mockResolvedValueOnce(outflow);
+  vi.mocked(findUnpaidBills).mockResolvedValueOnce(unpaidBills);
+  vi.mocked(findUnreceivedRevenues).mockResolvedValueOnce(unreceivedRevenues);
   vi.mocked(findCashFlow).mockResolvedValueOnce(cashFlow);
   vi.mocked(findPendingCreditSummary).mockResolvedValueOnce("0.00");
   vi.mocked(findPendingCreditPerWallet).mockResolvedValueOnce([]);
@@ -44,87 +46,71 @@ beforeEach(() => {
 });
 
 describe("getDashboard()", () => {
-  describe("net", () => {
-    it("should compute net as revenue minus outcome", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00" });
+  describe("income", () => {
+    it("should total inflow transactions plus unreceived revenues", async () => {
+      setupMocks({ inflow: "800.00", unreceivedRevenues: "200.00" });
 
       const result = await getDashboard({ from: FROM, to: TO });
 
-      expect(result.net).toBe("400.00");
+      expect(result.income).toEqual({
+        total: "1000.00",
+        transactions: "800.00",
+        unreceived: "200.00",
+      });
     });
+  });
 
-    it("should produce a negative net when outcome exceeds revenue", async () => {
-      setupMocks({ revenue: "400.00", outcome: "600.00" });
+  describe("outcome", () => {
+    it("should total outflow transactions plus unpaid bills", async () => {
+      setupMocks({ outflow: "450.00", unpaidBills: "150.00" });
 
       const result = await getDashboard({ from: FROM, to: TO });
 
-      expect(result.net).toBe("-200.00");
+      expect(result.outcome).toEqual({
+        total: "600.00",
+        transactions: "450.00",
+        unpaid: "150.00",
+      });
     });
   });
 
   describe("savingsRate", () => {
-    it("should express net as a percentage of revenue", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00" });
+    it("should express net as a percentage of income", async () => {
+      setupMocks({ inflow: "1000.00", outflow: "600.00" });
 
       const result = await getDashboard({ from: FROM, to: TO });
 
       expect(result.savingsRate).toBe(40);
     });
 
-    it("should return 0 when revenue is 0", async () => {
-      setupMocks({ revenue: "0.00", outcome: "0.00" });
+    it("should include unpaid bills and unreceived revenues in the rate", async () => {
+      // income = 800 + 200 = 1000; outcome = 450 + 150 = 600; rate = 40%
+      setupMocks({
+        inflow: "800.00",
+        outflow: "450.00",
+        unpaidBills: "150.00",
+        unreceivedRevenues: "200.00",
+      });
+
+      const result = await getDashboard({ from: FROM, to: TO });
+
+      expect(result.savingsRate).toBe(40);
+    });
+
+    it("should return 0 when income is 0", async () => {
+      setupMocks({ outflow: "600.00" });
 
       const result = await getDashboard({ from: FROM, to: TO });
 
       expect(result.savingsRate).toBe(0);
     });
-  });
 
-  describe("prior period comparison", () => {
-    it("should return null netDelta when prior period has no revenue and no outcome", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00" });
+    it("should be negative when outcome exceeds income", async () => {
+      setupMocks({ inflow: "400.00", outflow: "600.00" });
 
       const result = await getDashboard({ from: FROM, to: TO });
 
-      expect(result.netDelta).toBeNull();
-    });
-
-    it("should return null savingsRateDelta when prior period has no data", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00" });
-
-      const result = await getDashboard({ from: FROM, to: TO });
-
-      expect(result.savingsRateDelta).toBeNull();
-    });
-
-    it("should return non-null netDelta when prior period has revenue", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00", priorRevenue: "800.00" });
-
-      const result = await getDashboard({ from: FROM, to: TO });
-
-      expect(result.netDelta).not.toBeNull();
-    });
-
-    it("should return non-null netDelta when prior period has only outcome", async () => {
-      setupMocks({ revenue: "1000.00", outcome: "600.00", priorOutcome: "500.00" });
-
-      const result = await getDashboard({ from: FROM, to: TO });
-
-      expect(result.netDelta).not.toBeNull();
-    });
-
-    it("should compute netDelta as current net minus prior net", async () => {
-      // current net = 1000 - 600 = 400; prior net = 800 - 500 = 300; delta = 100
-      setupMocks({
-        revenue: "1000.00",
-        outcome: "600.00",
-        priorRevenue: "800.00",
-        priorOutcome: "500.00",
-      });
-
-      const result = await getDashboard({ from: FROM, to: TO });
-
-      expect(result.netDelta).toBe("100.00");
+      expect(result.savingsRate).toBe(-50);
     });
   });
 
@@ -134,7 +120,7 @@ describe("getDashboard()", () => {
         { date: "2026-03-01", in: "500.00", out: "200.00" },
         { date: "2026-03-15", in: "0.00", out: "100.00" },
       ];
-      setupMocks({ revenue: "500.00", cashFlow: series });
+      setupMocks({ inflow: "500.00", cashFlow: series });
 
       const result = await getDashboard({ from: FROM, to: TO });
 

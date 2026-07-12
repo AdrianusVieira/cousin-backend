@@ -1,26 +1,58 @@
 import type { Pool, PoolClient } from "pg";
 
-export async function findDashboardRevenue(
+export async function findInflowTransactions(
   db: Pool | PoolClient,
   { from, to }: { from: string; to: string },
 ): Promise<string> {
   const { rows } = await db.query<{ total: string }>(
-    `select coalesce(sum(rv.value), 0.00)::text as total
-     from revenues rv
-     where rv.term between $1 and $2`,
+    `select coalesce(sum(t.amount), 0.00)::text as total
+     from transactions t
+     where t.from_type in ('external', 'revenue')
+       and t.to_type = 'wallet'
+       and t.date between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";
 }
 
-export async function findDashboardOutcome(
+export async function findOutflowTransactions(
+  db: Pool | PoolClient,
+  { from, to }: { from: string; to: string },
+): Promise<string> {
+  const { rows } = await db.query<{ total: string }>(
+    `select coalesce(sum(t.amount), 0.00)::text as total
+     from transactions t
+     where t.from_type = 'wallet'
+       and t.to_type in ('external', 'bill')
+       and t.date between $1 and $2`,
+    [from, to],
+  );
+  return rows[0]?.total ?? "0.00";
+}
+
+export async function findUnpaidBills(
   db: Pool | PoolClient,
   { from, to }: { from: string; to: string },
 ): Promise<string> {
   const { rows } = await db.query<{ total: string }>(
     `select coalesce(sum(b.value), 0.00)::text as total
      from bills b
-     where b.term between $1 and $2`,
+     where b.paid = false
+       and b.term between $1 and $2`,
+    [from, to],
+  );
+  return rows[0]?.total ?? "0.00";
+}
+
+export async function findUnreceivedRevenues(
+  db: Pool | PoolClient,
+  { from, to }: { from: string; to: string },
+): Promise<string> {
+  const { rows } = await db.query<{ total: string }>(
+    `select coalesce(sum(rv.value), 0.00)::text as total
+     from revenues rv
+     where rv.received = false
+       and rv.term between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";

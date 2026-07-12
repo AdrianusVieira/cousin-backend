@@ -26,7 +26,7 @@ live in [`api-contracts.md`](api-contracts.md).
 
 | Method | Path | Query | Returns |
 | :----- | :--- | :---- | :------ |
-| `GET` | `/dashboard` | `from?`, `to?` | Aggregate revenue/outcome/net, savings rate + deltas, cash-flow series, pending credit per wallet. |
+| `GET` | `/dashboard` | `from?`, `to?` | Income/outcome breakdowns (transactions + unreceived/unpaid), savings rate, cash-flow series, pending credit per wallet. |
 
 ## Transactions
 
