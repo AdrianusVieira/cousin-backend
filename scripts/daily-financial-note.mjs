@@ -129,16 +129,20 @@ async function connect() {
   const candidates = connectionCandidates(raw);
   const errors = [];
   for (const c of candidates) {
-    const client = c.config
-      ? new pg.Client(c.config)
-      : new pg.Client({ connectionString: c.connectionString, ssl: c.ssl });
+    // A Pool, not a single Client: gather() below fires its queries concurrently
+    // via Promise.all, and one Client can only run one query at a time — doing
+    // so anyway scrambles the wire protocol ("could not determine data type of
+    // parameter $1"). Each query.query() call gets its own connection from here.
+    const pool = c.config
+      ? new pg.Pool({ ...c.config, max: 5 })
+      : new pg.Pool({ connectionString: c.connectionString, ssl: c.ssl, max: 5 });
     try {
-      await client.connect();
-      return { client, via: c.label };
+      await pool.query("select 1");
+      return { client: pool, via: c.label };
     } catch (e) {
       errors.push(`  - ${c.label}: ${e.message}`);
       try {
-        await client.end();
+        await pool.end();
       } catch {}
     }
   }
@@ -201,10 +205,10 @@ async function gather(db) {
     q(`select id, name, balance::text as balance, archived from wallets order by name asc`),
     q(`select rc.id, rc.is_variable, rc.interval_unit, rc.interval_value,
               rc.recurrent_day, rc.recurrent_month, rc.estimated_value::text as estimated_value,
-              (rc.created_at at time zone $2)::date::text as created_date,
+              (rc.created_at at time zone $1)::date::text as created_date,
               (exists(select 1 from bills b where b.recurrence_id=rc.id)
                or exists(select 1 from revenues r where r.recurrence_id=rc.id)) as active
-         from recurrences rc`, [D, LOCAL_TZ]),
+         from recurrences rc`, [LOCAL_TZ]),
     q(`select
          coalesce(sum(case when t.from_type in ('external','revenue') and t.to_type='wallet' then t.amount else 0 end),0)::text as "in",
          coalesce(sum(case when t.from_type='wallet' and t.to_type in ('external','bill') then t.amount else 0 end),0)::text as "out"
