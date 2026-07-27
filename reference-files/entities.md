@@ -2,15 +2,18 @@
 
 ## Wallet
 
-| Field         | Type      | Constraints             |
-| :------------ | :-------- | :---------------------- |
-| `id`          | uuid      | required, unique        |
-| `name`        | varchar   | required                |
-| `description` | varchar   | optional                |
-| `balance`     | decimal   | required, default 0     |
-| `archived`    | boolean   | required, default false |
-| `created_at`  | timestamp | required                |
-| `updated_at`  | timestamp | required                |
+| Field            | Type      | Constraints              |
+| :--------------- | :-------- | :----------------------- |
+| `id`             | uuid      | required, unique         |
+| `name`           | varchar   | required                 |
+| `description`    | varchar   | optional                 |
+| `balance`        | decimal   | required, default 0      |
+| `archived`       | boolean   | required, default false  |
+| `credit_enabled` | boolean   | required, default false  |
+| `created_at`     | timestamp | required                 |
+| `updated_at`     | timestamp | required                 |
+
+`credit_enabled` determines whether the wallet is offered as a source (`from`) option for credit transactions on the frontend.
 
 **Relationships:** Referenced by Transaction as `from` or `to`.
 

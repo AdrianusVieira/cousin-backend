@@ -56,6 +56,7 @@ interface Wallet {
   description: string | null;
   balance: Money;
   archived: boolean;
+  creditEnabled: boolean;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -454,7 +455,7 @@ interface WalletListResponse {
 ```
 
 ```
-POST /wallets                       // { name, description? } — balance starts at 0
+POST /wallets                       // { name, description?, creditEnabled? } — balance starts at 0, creditEnabled defaults to false
 GET  /wallets/:id?from&to           // detail
 ```
 
@@ -469,7 +470,7 @@ interface WalletDetailResponse {
 The wallet-detail transactions table reuses `GET /transactions?wallet=:id&from&to` — no dedicated endpoint.
 
 ```
-PATCH /wallets/:id                  // name/description/balance; editing balance generates a Manual Adjustment txn for the delta
+PATCH /wallets/:id                  // name/description/balance/creditEnabled; editing balance generates a Manual Adjustment txn for the delta
 POST  /wallets/:id/archive          // excluded from dashboard & selectors; history preserved
 POST  /wallets/:id/unarchive
 ```

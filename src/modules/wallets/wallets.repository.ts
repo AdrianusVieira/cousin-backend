@@ -30,8 +30,8 @@ export async function createWallet(
   input: CreateWalletInput,
 ): Promise<WalletRow> {
   const { rows } = await db.query<WalletRow>(
-    `insert into wallets (name, description) values ($1, $2) returning *`,
-    [input.name, input.description ?? null],
+    `insert into wallets (name, description, credit_enabled) values ($1, $2, $3) returning *`,
+    [input.name, input.description ?? null, input.creditEnabled ?? false],
   );
   return rows[0]!;
 }
@@ -39,7 +39,7 @@ export async function createWallet(
 export async function updateWallet(
   db: Pool | PoolClient,
   id: string,
-  fields: { name?: string; description?: string; balance?: string },
+  fields: { name?: string; description?: string; balance?: string; creditEnabled?: boolean },
 ): Promise<WalletRow> {
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -55,6 +55,10 @@ export async function updateWallet(
   if (fields.balance !== undefined) {
     values.push(fields.balance);
     sets.push(`balance = $${values.length}`);
+  }
+  if (fields.creditEnabled !== undefined) {
+    values.push(fields.creditEnabled);
+    sets.push(`credit_enabled = $${values.length}`);
   }
 
   values.push(id);

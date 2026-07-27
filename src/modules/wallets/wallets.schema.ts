@@ -9,6 +9,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be an ISO date, e.
 export const createWalletSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
+  creditEnabled: z.boolean().optional(),
 });
 
 export const patchWalletSchema = z
@@ -16,6 +17,7 @@ export const patchWalletSchema = z
     name: z.string().min(1, "Name is required").optional(),
     description: z.string().optional(),
     balance: moneyString.optional(),
+    creditEnabled: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, "At least one field is required");
 
