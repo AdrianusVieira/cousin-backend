@@ -1,5 +1,13 @@
 import type { Pool, PoolClient } from "pg";
 
+/**
+ * The date money actually leaves or enters a wallet. Debit settles on the
+ * purchase date; credit settles on its statement date (`term`), which for an
+ * installment purchase advances one month per installment — so each installment
+ * lands in the month it is charged, not in the month of the purchase.
+ */
+const CASH_DATE = "coalesce(t.term, t.date)";
+
 export async function findInflowTransactions(
   db: Pool | PoolClient,
   { from, to }: { from: string; to: string },
@@ -9,7 +17,7 @@ export async function findInflowTransactions(
      from transactions t
      where t.from_type in ('external', 'revenue')
        and t.to_type = 'wallet'
-       and t.date between $1 and $2`,
+       and ${CASH_DATE} between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";
@@ -24,7 +32,7 @@ export async function findOutflowTransactions(
      from transactions t
      where t.from_type = 'wallet'
        and t.to_type in ('external', 'bill')
-       and t.date between $1 and $2`,
+       and ${CASH_DATE} between $1 and $2`,
     [from, to],
   );
   return rows[0]?.total ?? "0.00";
@@ -75,7 +83,7 @@ export async function findCashFlow(
        coalesce(sum(case when t.from_type = 'wallet' and t.to_type in ('external','bill') then t.amount end), 0.00)::text as "out"
      from generate_series($1::date, $2::date, interval '1 day') as d(date)
      left join transactions t
-       on t.date = d.date
+       on ${CASH_DATE} = d.date
        and not (t.from_type = 'wallet' and t.to_type = 'wallet')
      group by d.date
      order by d.date asc`,
