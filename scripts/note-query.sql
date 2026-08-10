@@ -70,7 +70,9 @@ SELECT json_build_object(
   'dayFlow', (SELECT json_build_object(
        'in', coalesce(sum(CASE WHEN t.from_type IN ('external','revenue') AND t.to_type='wallet' THEN t.amount ELSE 0 END),0)::text,
        'out', coalesce(sum(CASE WHEN t.from_type='wallet' AND t.to_type IN ('external','bill') THEN t.amount ELSE 0 END),0)::text)
-     FROM transactions t, d WHERE t.date=d.target AND NOT (t.from_type='wallet' AND t.to_type='wallet')),
+     -- coalesce(term, date): credit settles on its statement date, debit on the
+     -- purchase date. Matches the dashboard's cash-date convention.
+     FROM transactions t, d WHERE coalesce(t.term, t.date)=d.target AND NOT (t.from_type='wallet' AND t.to_type='wallet')),
   'dashboardTotals', json_build_object(
        'revenue', (SELECT coalesce(sum(value),0) FROM revenues,d WHERE term=d.target)::text,
        'outcome', (SELECT coalesce(sum(value),0) FROM bills,d WHERE term=d.target)::text),
@@ -80,9 +82,10 @@ SELECT json_build_object(
        FROM transactions t JOIN wallets w ON w.id=t.from_id
        WHERE t.method='credit' AND t.settled=false GROUP BY w.id,w.name ORDER BY w.name) r), '[]'::json),
   'categories', coalesce((SELECT json_agg(r) FROM (SELECT id,name FROM categories) r), '[]'::json),
-  -- Previous-month rollup. Cash-flow figures are actual transactions dated in
-  -- the month (internal transfers / manual adjustments excluded, matching the
-  -- daily dayFlow convention). Net/saving-rate are derived in the renderer.
+  -- Previous-month rollup. Cash-flow figures are transactions settling in the
+  -- month -- coalesce(term, date), matching the daily dayFlow convention --
+  -- so credit installments land in the month they are charged. Net/saving-rate
+  -- are derived in the renderer.
   'monthSummary', (SELECT json_build_object(
      'month',        to_char(m.mstart,'YYYY-MM'),
      'monthStart',   to_char(m.mstart,'YYYY-MM-DD'),
@@ -90,35 +93,35 @@ SELECT json_build_object(
      'isFirstOfMonth', m.is_first,
      'daysInMonth',  (m.mend - m.mstart + 1),
      'income', (SELECT coalesce(sum(t.amount),0) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.to_type='wallet' AND t.from_type IN ('external','revenue'))::text,
      'outcome', (SELECT coalesce(sum(t.amount),0) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type IN ('external','bill'))::text,
      'billsPaid', (SELECT coalesce(sum(t.amount),0) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type='bill')::text,
      'txnCount', (SELECT count(*) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend),
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend),
      'outflowTxnCount', (SELECT count(*) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type IN ('external','bill')),
      'uncategorizedOut', (SELECT coalesce(sum(t.amount),0) FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type IN ('external','bill')
                    AND t.category_id IS NULL)::text,
      'byCategory', coalesce((SELECT json_agg(r) FROM (
                  SELECT c.id AS category_id, c.name AS name,
                         sum(t.amount)::text AS total, count(*) AS cnt
                  FROM transactions t JOIN categories c ON c.id=t.category_id
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type IN ('external','bill')
                  GROUP BY c.id,c.name ORDER BY sum(t.amount) DESC) r), '[]'::json),
      'largestExpense', (SELECT json_build_object(
                  'amount', t.amount::text, 'description', t.description,
                  'date', t.date::text, 'method', t.method)
                  FROM transactions t
-                 WHERE t.date BETWEEN m.mstart AND m.mend
+                 WHERE coalesce(t.term, t.date) BETWEEN m.mstart AND m.mend
                    AND t.from_type='wallet' AND t.to_type IN ('external','bill')
                  ORDER BY t.amount DESC LIMIT 1),
      'billsDueInMonth', (SELECT json_build_object(
