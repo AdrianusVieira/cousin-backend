@@ -171,13 +171,15 @@ GET /dashboard?from&to
 ```ts
 interface DashboardResponse {
   income: {
-    total: Money; // transactions + unreceived
-    transactions: Money; // inflow transactions (moneyIn + revenueRealized) with date in period
+    pendingCredit: Money; // subset of the above that is credit with settled = false
+    settled: Money; // inflow transactions (moneyIn + revenueRealized), cash date in period, excluding pending credit
+    total: Money; // settled + pendingCredit + unreceived
     unreceived: Money; // unreceived revenues with term in period
   };
   outcome: {
-    total: Money; // transactions + unpaid
-    transactions: Money; // outflow transactions (moneyOut + billPaid) with date in period
+    pendingCredit: Money; // subset of the above that is credit with settled = false
+    settled: Money; // outflow transactions (moneyOut + billPaid), cash date in period, excluding pending credit
+    total: Money; // settled + pendingCredit + unpaid
     unpaid: Money; // unpaid bills with term in period
   };
   net: Money; // income.total − outcome.total
@@ -190,7 +192,7 @@ interface DashboardResponse {
 }
 ```
 
-Income/outcome combine actual money movement (transactions, keyed on `date`) with still-open obligations (unpaid bills / unreceived revenues, keyed on `term`). A paid bill contributes via whichever transaction settled it — never twice — regardless of whether the payment was registered as `billPaid` or `moneyOut`. A bill/revenue marked paid/received with no transaction registered at all is not counted. Internal transfers and manual adjustments are excluded. Prior-period deltas were removed: the unpaid/unreceived components are point-in-time measures, so a prior-window comparison is not meaningful.
+Income/outcome combine actual money movement (transactions, keyed on the **cash date** = `coalesce(term, date)`, so credit lands on its statement date and each installment falls in the month it is charged) with still-open obligations (unpaid bills / unreceived revenues, keyed on `term`). `cashFlow` is the exception: it keys on the purchase `date`, because it answers "what did I move on this day". A paid bill contributes via whichever transaction settled it — never twice — regardless of whether the payment was registered as `billPaid` or `moneyOut`. A bill/revenue marked paid/received with no transaction registered at all is not counted. Internal transfers and manual adjustments are excluded. Prior-period deltas were removed: the unpaid/unreceived components are point-in-time measures, so a prior-window comparison is not meaningful.
 
 ---
 

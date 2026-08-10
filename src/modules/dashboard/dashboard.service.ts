@@ -24,8 +24,8 @@ export async function getDashboard(query: { from?: string; to?: string }) {
   const from = query.from ?? toISODate(subtractMonths(new Date(`${to}T00:00:00Z`), 3));
 
   const [
-    inflowStr,
-    outflowStr,
+    inflow,
+    outflow,
     unpaidBillsStr,
     unreceivedRevenuesStr,
     cashFlow,
@@ -41,19 +41,23 @@ export async function getDashboard(query: { from?: string; to?: string }) {
     findPendingCreditPerWallet(pool),
   ]);
 
-  const incomeCents = toCents(inflowStr) + toCents(unreceivedRevenuesStr);
-  const outcomeCents = toCents(outflowStr) + toCents(unpaidBillsStr);
+  const incomeCents =
+    toCents(inflow.settled_total) + toCents(inflow.pending_credit) + toCents(unreceivedRevenuesStr);
+  const outcomeCents =
+    toCents(outflow.settled_total) + toCents(outflow.pending_credit) + toCents(unpaidBillsStr);
   const netCents = incomeCents - outcomeCents;
 
   return {
     income: {
+      pendingCredit: inflow.pending_credit,
+      settled: inflow.settled_total,
       total: fromCents(incomeCents),
-      transactions: inflowStr,
       unreceived: unreceivedRevenuesStr,
     },
     outcome: {
+      pendingCredit: outflow.pending_credit,
+      settled: outflow.settled_total,
       total: fromCents(outcomeCents),
-      transactions: outflowStr,
       unpaid: unpaidBillsStr,
     },
     net: fromCents(netCents),

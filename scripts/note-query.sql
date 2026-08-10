@@ -70,9 +70,9 @@ SELECT json_build_object(
   'dayFlow', (SELECT json_build_object(
        'in', coalesce(sum(CASE WHEN t.from_type IN ('external','revenue') AND t.to_type='wallet' THEN t.amount ELSE 0 END),0)::text,
        'out', coalesce(sum(CASE WHEN t.from_type='wallet' AND t.to_type IN ('external','bill') THEN t.amount ELSE 0 END),0)::text)
-     -- coalesce(term, date): credit settles on its statement date, debit on the
-     -- purchase date. Matches the dashboard's cash-date convention.
-     FROM transactions t, d WHERE coalesce(t.term, t.date)=d.target AND NOT (t.from_type='wallet' AND t.to_type='wallet')),
+     -- Purchase date, matching the dashboard's day-by-day cash flow chart: this is
+     -- what moved on the day, so a credit purchase lands on the day it was made.
+     FROM transactions t, d WHERE t.date=d.target AND NOT (t.from_type='wallet' AND t.to_type='wallet')),
   'dashboardTotals', json_build_object(
        'revenue', (SELECT coalesce(sum(value),0) FROM revenues,d WHERE term=d.target)::text,
        'outcome', (SELECT coalesce(sum(value),0) FROM bills,d WHERE term=d.target)::text),
@@ -82,10 +82,10 @@ SELECT json_build_object(
        FROM transactions t JOIN wallets w ON w.id=t.from_id
        WHERE t.method='credit' AND t.settled=false GROUP BY w.id,w.name ORDER BY w.name) r), '[]'::json),
   'categories', coalesce((SELECT json_agg(r) FROM (SELECT id,name FROM categories) r), '[]'::json),
-  -- Previous-month rollup. Cash-flow figures are transactions settling in the
-  -- month -- coalesce(term, date), matching the daily dayFlow convention --
-  -- so credit installments land in the month they are charged. Net/saving-rate
-  -- are derived in the renderer.
+  -- Previous-month rollup. Totals are transactions settling in the month --
+  -- coalesce(term, date), matching the dashboard's Income and Outcome -- so
+  -- credit installments land in the month they are charged, not the month of
+  -- the purchase. Net/saving-rate are derived in the renderer.
   'monthSummary', (SELECT json_build_object(
      'month',        to_char(m.mstart,'YYYY-MM'),
      'monthStart',   to_char(m.mstart,'YYYY-MM-DD'),
