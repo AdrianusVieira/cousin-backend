@@ -27,13 +27,21 @@ const TO = "2026-03-31";
 
 function setupMocks({
   inflow = "0.00",
+  inflowPendingCredit = "0.00",
   outflow = "0.00",
+  outflowPendingCredit = "0.00",
   unpaidBills = "0.00",
   unreceivedRevenues = "0.00",
   cashFlow = [] as { date: string; in: string; out: string }[],
 } = {}) {
-  vi.mocked(findInflowTransactions).mockResolvedValueOnce(inflow);
-  vi.mocked(findOutflowTransactions).mockResolvedValueOnce(outflow);
+  vi.mocked(findInflowTransactions).mockResolvedValueOnce({
+    pending_credit: inflowPendingCredit,
+    settled_total: inflow,
+  });
+  vi.mocked(findOutflowTransactions).mockResolvedValueOnce({
+    pending_credit: outflowPendingCredit,
+    settled_total: outflow,
+  });
   vi.mocked(findUnpaidBills).mockResolvedValueOnce(unpaidBills);
   vi.mocked(findUnreceivedRevenues).mockResolvedValueOnce(unreceivedRevenues);
   vi.mocked(findCashFlow).mockResolvedValueOnce(cashFlow);
@@ -53,9 +61,23 @@ describe("getDashboard()", () => {
       const result = await getDashboard({ from: FROM, to: TO });
 
       expect(result.income).toEqual({
+        pendingCredit: "0.00",
+        settled: "800.00",
         total: "1000.00",
-        transactions: "800.00",
         unreceived: "200.00",
+      });
+    });
+
+    it("should count pending credit inflow toward the total but keep it separate", async () => {
+      setupMocks({ inflow: "800.00", inflowPendingCredit: "120.00" });
+
+      const result = await getDashboard({ from: FROM, to: TO });
+
+      expect(result.income).toEqual({
+        pendingCredit: "120.00",
+        settled: "800.00",
+        total: "920.00",
+        unreceived: "0.00",
       });
     });
   });
@@ -67,9 +89,23 @@ describe("getDashboard()", () => {
       const result = await getDashboard({ from: FROM, to: TO });
 
       expect(result.outcome).toEqual({
+        pendingCredit: "0.00",
+        settled: "450.00",
         total: "600.00",
-        transactions: "450.00",
         unpaid: "150.00",
+      });
+    });
+
+    it("should count pending credit outflow toward the total but keep it separate", async () => {
+      setupMocks({ outflow: "450.00", outflowPendingCredit: "250.00" });
+
+      const result = await getDashboard({ from: FROM, to: TO });
+
+      expect(result.outcome).toEqual({
+        pendingCredit: "250.00",
+        settled: "450.00",
+        total: "700.00",
+        unpaid: "0.00",
       });
     });
   });
