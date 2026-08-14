@@ -44,16 +44,25 @@ export function classifyTransaction({
 
 /**
  * The signed change `transaction` applies to `walletId`'s balance.
- * Only `method = 'debit'` transactions affect wallet balances; credit returns 0.
+ *
+ * A credit purchase moves no money when it is made - only when its statement is
+ * settled, at which point the full amount leaves the wallet it was drawn from.
+ * An unsettled credit transaction therefore returns 0.
  *
  * Manual adjustments (from === to === walletId) store the signed delta directly
  * in `amount` - applying both legs would cancel out to zero.
  */
 export function walletBalanceDelta(
-  transaction: TxnEndpoints & { method: TxnMethod; amount: number },
+  transaction: TxnEndpoints & { method: TxnMethod; amount: number; settled?: boolean },
   walletId: string,
 ): number {
-  if (transaction.method !== "debit") return 0;
+  if (transaction.method === "credit") {
+    if (!transaction.settled) return 0;
+
+    const isDrawnOnThisWallet =
+      transaction.fromType === "wallet" && transaction.fromId === walletId;
+    return isDrawnOnThisWallet ? -transaction.amount : 0;
+  }
 
   const isFromThisWallet = transaction.fromType === "wallet" && transaction.fromId === walletId;
   const isToThisWallet = transaction.toType === "wallet" && transaction.toId === walletId;

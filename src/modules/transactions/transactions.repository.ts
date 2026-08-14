@@ -2,30 +2,43 @@ import type { Pool, PoolClient } from "pg";
 import type { TxnFromType, TxnMethod, TxnToType } from "../../lib/transactions.js";
 import type { FullTransactionRow } from "./transactions.types.js";
 
-export interface WalletDebitTxnRow {
+export interface WalletBalanceTxnRow {
   date: string;
   amount: string;
+  method?: TxnMethod;
   from_type: TxnFromType;
   from_id: string | null;
   to_type: TxnToType;
   to_id: string | null;
 }
 
-/** Debit transactions touching `walletId`'s balance, dated after `since` (exclusive). */
-export async function getWalletDebitTxnsSince(
+/**
+ * Transactions that moved `walletId`'s balance after `since` (exclusive), each
+ * dated by when the money actually moved: `date` for debit, `settled_at` for
+ * credit. Unsettled credit moved nothing and is excluded.
+ */
+export async function getWalletBalanceTxnsSince(
   db: Pool | PoolClient,
   walletId: string,
   since: string,
-): Promise<WalletDebitTxnRow[]> {
-  const { rows } = await db.query<WalletDebitTxnRow>(
-    `select to_char(date, 'YYYY-MM-DD') as date, amount, from_type, from_id, to_type, to_id
+): Promise<WalletBalanceTxnRow[]> {
+  const { rows } = await db.query<WalletBalanceTxnRow>(
+    `select
+       to_char(case when method = 'credit' then settled_at else date end, 'YYYY-MM-DD') as date,
+       amount, method, from_type, from_id, to_type, to_id
      from transactions
-     where method = 'debit'
-       and date > $2
-       and (
-         (from_type = 'wallet' and from_id = $1) or
-         (to_type = 'wallet' and to_id = $1)
-       )
+     where (
+       (method = 'debit'
+         and date > $2
+         and (
+           (from_type = 'wallet' and from_id = $1) or
+           (to_type = 'wallet' and to_id = $1)
+         ))
+       or
+       (method = 'credit'
+         and settled_at > $2
+         and from_type = 'wallet' and from_id = $1)
+     )
      order by date asc`,
     [walletId, since],
   );
@@ -81,6 +94,7 @@ export const FULL_TXN_SELECT = `
     t.installment_total,
     t.credit_group_id,
     t.settled,
+    to_char(t.settled_at, 'YYYY-MM-DD') as settled_at,
     to_char(t.term, 'YYYY-MM-DD') as term,
     t.created_at,
     t.updated_at
@@ -315,13 +329,35 @@ export async function findTransactionsByIds(
   return rows;
 }
 
+export interface SettledCreditRow {
+  id: string;
+  amount: string;
+  from_type: TxnFromType;
+  from_id: string | null;
+  to_type: TxnToType;
+  to_id: string | null;
+}
+
+/**
+ * Settles the given credit transactions and returns only the rows this call
+ * actually changed. The `settled_at is null` guard makes the update idempotent:
+ * settling the same ids twice moves money once.
+ */
 export async function setTransactionsSettled(
   db: Pool | PoolClient,
   ids: string[],
-): Promise<void> {
-  if (ids.length === 0) return;
-  await db.query(
-    `update transactions set settled = true where id = any($1::uuid[])`,
-    [ids],
+  settledAt: string,
+): Promise<SettledCreditRow[]> {
+  if (ids.length === 0) return [];
+
+  const { rows } = await db.query<SettledCreditRow>(
+    `update transactions
+        set settled = true, settled_at = $2
+      where id = any($1::uuid[])
+        and method = 'credit'
+        and settled_at is null
+      returning id, amount::text as amount, from_type, from_id, to_type, to_id`,
+    [ids, settledAt],
   );
+  return rows;
 }

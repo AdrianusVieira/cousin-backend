@@ -4,9 +4,9 @@ import { fromCents, toCents } from "../../lib/money.js";
 import { walletBalanceDelta } from "../../lib/transactions.js";
 import { pool } from "../../db/pool.js";
 import {
-  getWalletDebitTxnsSince,
+  getWalletBalanceTxnsSince,
   insertManualAdjustment,
-  type WalletDebitTxnRow,
+  type WalletBalanceTxnRow,
 } from "../transactions/transactions.repository.js";
 import {
   createWallet as createWalletRow,
@@ -23,10 +23,14 @@ interface BalancePoint {
   balance: string;
 }
 
-/** Reconstructs end-of-day balances for `walletId` over [from, to] from its debit transactions. */
+/**
+ * Reconstructs end-of-day balances for `walletId` over [from, to] from the
+ * transactions that moved it. Rows arrive already dated by when the money moved,
+ * so a settled credit lands on its settlement date rather than its purchase date.
+ */
 export function buildBalanceSeries(
   currentBalance: string,
-  txns: WalletDebitTxnRow[],
+  txns: WalletBalanceTxnRow[],
   walletId: string,
   from: string,
   to: string,
@@ -35,12 +39,13 @@ export function buildBalanceSeries(
   for (const txn of txns) {
     const delta = walletBalanceDelta(
       {
-        method: "debit",
+        method: txn.method ?? "debit",
         amount: toCents(txn.amount),
         fromType: txn.from_type,
         fromId: txn.from_id,
         toType: txn.to_type,
         toId: txn.to_id,
+        settled: true,
       },
       walletId,
     );
@@ -81,7 +86,7 @@ export async function listWallets(query: { active?: boolean; from?: string; to?:
 
   const seriesByWallet = new Map<string, BalancePoint[]>();
   for (const row of activeRows) {
-    const txns = await getWalletDebitTxnsSince(pool, row.id, fromIso);
+    const txns = await getWalletBalanceTxnsSince(pool, row.id, fromIso);
     seriesByWallet.set(row.id, buildBalanceSeries(row.balance, txns, row.id, fromIso, toIso));
   }
 
@@ -132,7 +137,7 @@ export async function getWalletDetail(id: string, range: { from?: string; to?: s
   const to = requestedTo > todayIso ? todayIso : requestedTo;
   const from = range.from ?? toISODate(subtractMonths(new Date(`${to}T00:00:00Z`), 3));
 
-  const txns = await getWalletDebitTxnsSince(pool, id, from);
+  const txns = await getWalletBalanceTxnsSince(pool, id, from);
   const balanceSeries = buildBalanceSeries(row.balance, txns, id, from, to);
   const periodAverageCents = average(balanceSeries.map((point) => toCents(point.balance)));
 

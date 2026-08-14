@@ -18,6 +18,7 @@ export interface FullTransactionRow {
   installment_total: number | null;
   credit_group_id: string | null;
   settled: boolean;
+  settled_at: string | null;
   term: string | null;
   created_at: string;
   updated_at: string;
@@ -42,6 +43,7 @@ export interface Transaction {
   installmentTotal: number | null;
   creditGroupId: string | null;
   settled: boolean;
+  settledAt: string | null;
   term: string | null;
   kind: TxnKind;
   sign: TxnSign;
@@ -73,6 +75,7 @@ export function mapFullTransaction(row: FullTransactionRow): Transaction {
     installmentTotal: row.installment_total,
     creditGroupId: row.credit_group_id,
     settled: row.settled,
+    settledAt: row.settled_at,
     term: row.term,
     kind: classification?.kind ?? "manualAdjustment",
     sign: classification?.sign ?? null,
