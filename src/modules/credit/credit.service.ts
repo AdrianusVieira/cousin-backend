@@ -1,9 +1,11 @@
 import { pool } from "../../db/pool.js";
+import { toISODate, today } from "../../lib/date.js";
 import { fromCents, toCents } from "../../lib/money.js";
 import {
   findTransactionsByIds,
   setTransactionsSettled,
 } from "../transactions/transactions.repository.js";
+import { applyBalanceDeltas } from "../transactions/transactions.service.js";
 import { mapFullTransaction, type Transaction } from "../transactions/transactions.types.js";
 import { findCreditTransactions } from "./credit.repository.js";
 import type { CreditListQuery, SettleInput } from "./credit.schema.js";
@@ -73,8 +75,41 @@ export async function listCredit(query: CreditListQuery) {
   };
 }
 
+/**
+ * Settling a statement is when its money actually leaves the wallet, so this
+ * flips the flag and applies the balance deltas in one DB transaction. Only the
+ * rows the guarded update actually changed are debited, which makes settling the
+ * same ids twice a no-op rather than a double charge.
+ */
 export async function settleCredit(input: SettleInput): Promise<Transaction[]> {
-  await setTransactionsSettled(pool, input.transactionIds);
+  const settledAt = toISODate(today());
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    const settledRows = await setTransactionsSettled(client, input.transactionIds, settledAt);
+
+    for (const row of settledRows) {
+      await applyBalanceDeltas(client, {
+        method: "credit",
+        amount: toCents(row.amount),
+        fromType: row.from_type,
+        fromId: row.from_id ?? undefined,
+        toType: row.to_type,
+        toId: row.to_id ?? undefined,
+        settled: true,
+      });
+    }
+
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+
   const rows = await findTransactionsByIds(pool, input.transactionIds);
   return rows.map(mapFullTransaction);
 }

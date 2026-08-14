@@ -60,22 +60,34 @@ function decodeCursor(cursor: string): { date: string; id: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Balance delta application (debit only; credit never touches balances)
+// Balance delta application
+//
+// Debit moves money when it happens. Credit moves none until its statement is
+// settled, and then the whole amount leaves the wallet it was drawn from - so a
+// settled credit transaction adjusts balances exactly like a debit would.
 // ---------------------------------------------------------------------------
 
-async function applyBalanceDeltas(
+interface BalanceAffectingTxn {
+  method: "debit" | "credit";
+  amount: number;
+  fromType: TxnFromType;
+  fromId?: string;
+  toType: TxnToType;
+  toId?: string;
+  settled?: boolean;
+}
+
+/** Whether `row` has already moved money, and so needs reversing when edited or deleted. */
+export function movesMoney(row: { method: "debit" | "credit"; settled_at: string | null }): boolean {
+  return row.method === "debit" || row.settled_at !== null;
+}
+
+export async function applyBalanceDeltas(
   client: Pool | PoolClient,
-  txn: {
-    method: "debit" | "credit";
-    amount: number;
-    fromType: TxnFromType;
-    fromId?: string;
-    toType: TxnToType;
-    toId?: string;
-  },
+  txn: BalanceAffectingTxn,
   sign: 1 | -1 = 1,
 ): Promise<void> {
-  if (txn.method !== "debit") return;
+  if (txn.method === "credit" && !txn.settled) return;
 
   const fromWallet = txn.fromType === "wallet" && txn.fromId ? txn.fromId : null;
   const toWallet = txn.toType === "wallet" && txn.toId ? txn.toId : null;
@@ -85,12 +97,13 @@ async function applyBalanceDeltas(
   for (const walletId of wallets) {
     const delta = walletBalanceDelta(
       {
-        method: "debit",
+        method: txn.method,
         amount: txn.amount,
         fromType: txn.fromType,
         fromId: txn.fromId ?? null,
         toType: txn.toType,
         toId: txn.toId ?? null,
+        settled: txn.settled,
       },
       walletId,
     );
@@ -307,7 +320,7 @@ export async function patchTransaction(
     categoryId: "categoryId" in input ? (input.categoryId ?? null) : undefined,
   };
 
-  if (existing.method === "debit" && input.amount !== undefined) {
+  if (movesMoney(existing) && input.amount !== undefined) {
     const client = await pool.connect();
     try {
       await client.query("begin");
@@ -315,23 +328,25 @@ export async function patchTransaction(
       await applyBalanceDeltas(
         client,
         {
-          method: "debit",
+          method: existing.method,
           amount: toCents(existing.amount),
           fromType: existing.from_type,
           fromId: existing.from_id ?? undefined,
           toType: existing.to_type,
           toId: existing.to_id ?? undefined,
+          settled: true,
         },
         -1,
       );
 
       await applyBalanceDeltas(client, {
-        method: "debit",
+        method: existing.method,
         amount: toCents(input.amount),
         fromType: existing.from_type,
         fromId: existing.from_id ?? undefined,
         toType: existing.to_type,
         toId: existing.to_id ?? undefined,
+        settled: true,
       });
 
       await updateTransaction(client, id, updateFields);
@@ -354,19 +369,20 @@ export async function deleteTransactionById(id: string): Promise<void> {
   const existing = await findTransactionById(pool, id);
   if (!existing) throw new NotFoundError("Transaction not found");
 
-  if (existing.method === "debit") {
+  if (movesMoney(existing)) {
     const client = await pool.connect();
     try {
       await client.query("begin");
       await applyBalanceDeltas(
         client,
         {
-          method: "debit",
+          method: existing.method,
           amount: toCents(existing.amount),
           fromType: existing.from_type,
           fromId: existing.from_id ?? undefined,
           toType: existing.to_type,
           toId: existing.to_id ?? undefined,
+          settled: true,
         },
         -1,
       );

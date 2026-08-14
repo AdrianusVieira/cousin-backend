@@ -32,6 +32,7 @@ const makeCreditRow = (overrides: Partial<FullTransactionRow> = {}): FullTransac
   installment_total: null,
   credit_group_id: null,
   settled: false,
+  settled_at: null,
   term: "2026-03-15",
   created_at: "2026-03-01T00:00:00Z",
   updated_at: "2026-03-01T00:00:00Z",

@@ -67,7 +67,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 - `hasOpenItems` (Source), `hasLinkedTransaction` (Bill/Revenue), `active` (Recurrence).
 
 **BE application layer, inside a single DB transaction:**
-- **Wallet balance** — adjusted only for `method = 'debit'`. Create: apply delta. Edit: reverse old, apply new. Delete: reverse. *Open decision in the spec:* balance lives in the app layer (testable, one language) vs. a DB trigger (correct even on out-of-band writes). A non-BE write currently desyncs the balance — confirm the owner's intent before relying on either choice.
+- **Wallet balance** — adjusted for `method = 'debit'` on create, and for `method = 'credit'` when its statement is settled (`settled_at` set), never at purchase time. Create: apply delta. Edit: reverse old, apply new. Delete: reverse. Both edit and delete reverse a settled credit row too. *Open decision in the spec:* balance lives in the app layer (testable, one language) vs. a DB trigger (correct even on out-of-band writes). A non-BE write currently desyncs the balance — confirm the owner's intent before relying on either choice.
 - **Manual Adjustment** — editing a wallet's balance generates a transaction with `from_type = to_type = 'wallet'`, `from_id = to_id = <that wallet>`, for the delta.
 - **Installment expansion** — `installmentTotal > 1` generates N rows sharing a `credit_group_id`, each carrying its `installment_number`. `date` (purchase date) is identical across all N rows; only `term` (due date) advances one month per installment.
 
@@ -96,7 +96,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 ## Entity invariants (quick reference)
 
 - **Bill / Revenue:** `paid` / `received` is a manual toggle, fully **independent of transaction linking**. Delete is blocked (`409`) when `paid` / `received = true`.
-- **Transaction:** `settled` is meaningful only for credit (always `true` for debit, enforced); `term` is credit-only (NULL for debit), defaulting to the 15th of the current month; `credit_group_id` exists only when `installmentTotal > 1`. Debit touches wallet balance; credit never does.
+- **Transaction:** `settled` is meaningful only for credit (always `true` for debit, enforced), and `settled_at` records the date it was settled — the two are constrained to agree, and `settled_at` is NULL for debit; `term` is credit-only (NULL for debit), defaulting to the 15th of the current month; `credit_group_id` exists only when `installmentTotal > 1`. Debit touches wallet balance at creation; credit touches it at settlement, debiting `from_id` for the full amount. `POST /credit/settle` is idempotent — it guards on `settled_at is null` and debits only the rows it actually changed.
 - **Source:** the *reason* behind a Bill/Revenue, not the transaction counterparty (e.g. the apartment, not the plumber). Archive blocked (`409`) while it has unpaid bills or unreceived revenues (`hasOpenItems`).
 - **Wallet:** starts at balance 0; archived wallets are excluded from dashboard and selectors but retain full history.
 
