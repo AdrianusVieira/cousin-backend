@@ -21,6 +21,7 @@ live in [`api-contracts.md`](api-contracts.md).
 | Method | Path | Auth | Notes |
 | :----- | :--- | :--: | :---- |
 | `GET` | `/health` | no | `{ "status": "ok" }` when DB reachable, else `503`. Liveness/readiness probe. |
+| `GET` | `/meta/last-updated` | yes | `{ bills, categories, recurrences, revenues, sources, transactions, wallets }` — `max(updated_at)` per table as RFC 3339, or `null` when the table is empty. Drives the "last updated" stamp in the FE page header. Reflects inserts and updates only; a hard delete does not move it. |
 
 ## Dashboard
 
