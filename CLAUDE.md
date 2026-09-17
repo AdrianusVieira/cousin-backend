@@ -103,7 +103,7 @@ REST API backend for a personal finance tracker: wallets, bills, revenues, trans
 ## Deployment
 
 - **DB:** Supabase (free tier, `sa-east-1`). Use the **session pooler** URL (`pooler.supabase.com`) — direct connections fail from hosts that don't support IPv6.
-- **BE:** Render free tier (`cousin-backend.onrender.com`). Build: `npm install -g pnpm@9.15.0 && pnpm install && pnpm build`. Start: `node dist/index.js`. Env vars (`DATABASE_URL`, `SUPABASE_JWT_SECRET`, `CORS_ORIGIN`) are set in the Render dashboard, not in `render.yaml`.
+- **BE:** Render free tier (`cousin-backend.onrender.com`). Build: `npm install -g pnpm@9.15.0 && pnpm install && pnpm build`. Start: `node dist/index.js`. Env vars (`DATABASE_URL`, `SUPABASE_JWKS_URL`, `ALLOWED_USER_IDS`, `CORS_ORIGIN`) are set in the Render dashboard, not in `render.yaml`.
 - **SSL:** `pg` Pool uses `ssl: { rejectUnauthorized: false }` — required because Supabase certs don't chain to a public CA. `ssl: true` fails with `self-signed certificate in certificate chain`.
 - **Recurrence job:** Runs on startup (no `setInterval`). Render free tier sleeps after 15 min idle, so the timer approach doesn't work. FE can trigger manually via `POST /api/jobs/recurrence-window` (auth-protected).
 - **Cold starts:** First request after idle takes ~30-60s while Render spins up. FE should handle gracefully.

@@ -1,6 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
-import jwt from "jsonwebtoken";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { env } from "../config/env.js";
 import { ApiError } from "../lib/errors.js";
 
@@ -18,28 +17,26 @@ declare module "fastify" {
 // project's JWKS endpoint. Key rotation is handled transparently.
 const jwks = createRemoteJWKSet(new URL(env.SUPABASE_JWKS_URL));
 
-async function verifyToken(token: string): Promise<string> {
-  const { alg } = decodeProtectedHeader(token);
+const allowedUserIds = new Set(env.ALLOWED_USER_IDS);
 
-  if (alg === "ES256") {
-    const { payload } = await jwtVerify(token, jwks, { algorithms: ["ES256"] });
-    if (!payload.sub) {
-      throw new Error("Token missing subject");
-    }
-    return payload.sub;
+/**
+ * A signature alone is not authorization. Supabase will happily issue a valid
+ * ES256 token to anyone who can create an account in the project, and no table
+ * here is scoped per user - so every endpoint would be readable and writable by
+ * any registered account. The allowlist is what makes a token mean "the owner".
+ */
+export function isAllowedUser(sub: string): boolean {
+  return allowedUserIds.has(sub);
+}
+
+async function verifySubject(token: string): Promise<string> {
+  const { payload } = await jwtVerify(token, jwks, { algorithms: ["ES256"] });
+
+  if (!payload.sub) {
+    throw new Error("Token missing subject");
   }
 
-  // Legacy HS256 fallback during the cutover to asymmetric keys. Remove once
-  // all clients issue ES256 tokens (and drop SUPABASE_JWT_SECRET).
-  if (alg === "HS256" && env.SUPABASE_JWT_SECRET) {
-    const payload = jwt.verify(token, env.SUPABASE_JWT_SECRET, { algorithms: ["HS256"] });
-    if (typeof payload === "string" || !payload.sub) {
-      throw new Error("Token missing subject");
-    }
-    return payload.sub;
-  }
-
-  throw new Error(`Unsupported token algorithm: ${alg}`);
+  return payload.sub;
 }
 
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply) {
@@ -50,9 +47,17 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
     throw new ApiError(401, "UNAUTHORIZED", "Missing or invalid Authorization header");
   }
 
+  let sub: string;
   try {
-    request.user = { id: await verifyToken(token) };
+    sub = await verifySubject(token);
   } catch {
     throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token");
   }
+
+  if (!isAllowedUser(sub)) {
+    request.log.warn({ sub }, "rejected token for non-allowlisted user");
+    throw new ApiError(403, "FORBIDDEN", "This account is not permitted to use this API");
+  }
+
+  request.user = { id: sub };
 }

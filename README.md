@@ -28,7 +28,8 @@ pnpm dev               # start the dev server in watch mode
 | Variable              | Required | Default | Description                                                                 |
 | --------------------- | :------: | ------- | --------------------------------------------------------------------------- |
 | `DATABASE_URL`        |   yes    | —       | Postgres connection string for the Supabase database.                       |
-| `SUPABASE_JWT_SECRET` |   yes    | —       | Supabase JWT secret used to verify `Authorization: Bearer` tokens.          |
+| `SUPABASE_JWKS_URL`   |   yes    | —       | Supabase JWKS endpoint used to verify ES256 `Authorization: Bearer` tokens. |
+| `ALLOWED_USER_IDS`    |   yes    | —       | Comma-separated Supabase user ids permitted to use the API.                 |
 | `PORT`                |    no    | `3000`  | HTTP port.                                                                   |
 | `CORS_ORIGIN`         |    no    | (any)   | Comma-separated allowed origins. Unset reflects any origin (fine for local dev / Bearer-token auth). |
 

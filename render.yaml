@@ -10,7 +10,9 @@ services:
         value: "20"
       - key: DATABASE_URL
         sync: false
-      - key: SUPABASE_JWT_SECRET
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: ALLOWED_USER_IDS
         sync: false
       - key: CORS_ORIGIN
         sync: false
