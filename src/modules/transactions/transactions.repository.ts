@@ -277,7 +277,7 @@ export async function insertTransaction(
 export interface UpdateTransactionFields {
   amount?: string;
   date?: string;
-  description?: string;
+  description?: string | null;
   categoryId?: string | null;
 }
 
@@ -297,11 +297,11 @@ export async function updateTransaction(
     values.push(fields.date);
     sets.push(`date = $${values.length}`);
   }
-  if ("description" in fields) {
+  if (fields.description !== undefined) {
     values.push(fields.description ?? null);
     sets.push(`description = $${values.length}`);
   }
-  if ("categoryId" in fields) {
+  if (fields.categoryId !== undefined) {
     values.push(fields.categoryId ?? null);
     sets.push(`category_id = $${values.length}`);
   }

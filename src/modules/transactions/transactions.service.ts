@@ -316,8 +316,8 @@ export async function patchTransaction(
   const updateFields = {
     amount: input.amount,
     date: input.date,
-    description: "description" in input ? (input.description ?? undefined) : undefined,
-    categoryId: "categoryId" in input ? (input.categoryId ?? null) : undefined,
+    description: input.description,
+    categoryId: input.categoryId,
   };
 
   if (movesMoney(existing) && input.amount !== undefined) {
