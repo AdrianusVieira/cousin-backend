@@ -13,8 +13,9 @@ const row: FullTransactionRow = {
   date: "2026-10-01",
   description: "Lunch",
   method: "debit",
-  category_id: "11111111-1111-4111-8111-111111111111",
-  category_name: "Food",
+  category_allocations: [
+    { categoryId: "11111111-1111-4111-8111-111111111111", categoryName: "Food", amount: "12.34" },
+  ],
   from_type: "wallet",
   from_id: "wallet-1",
   from_name: "Test wallet",
@@ -64,8 +65,8 @@ describe("patchTransaction", () => {
     await patchTransaction(row.id, patchTransactionSchema.parse({ categoryId: null }));
 
     expect(pool.query).toHaveBeenCalledWith(
-      "update transactions set category_id = $1 where id = $2",
-      [null, row.id],
+      "delete from transaction_category_allocations where transaction_id = $1",
+      [row.id],
     );
   });
 
@@ -76,5 +77,26 @@ describe("patchTransaction", () => {
       "update transactions set description = $1 where id = $2",
       ["Dinner", row.id],
     );
+  });
+
+  it("should reject changing a split total without balanced replacement allocations before changing balances", async () => {
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [
+        {
+          ...row,
+          category_allocations: [
+            { categoryId: "category-1", categoryName: "Food", amount: "10.00" },
+            { categoryId: "category-2", categoryName: "Home", amount: "2.34" },
+          ],
+        },
+      ],
+    } as never);
+    await expect(patchTransaction(row.id, { amount: "20.00" })).rejects.toThrow(
+      "Validation failed",
+    );
+    expect(
+      vi.mocked(pool.query).mock.calls.some(([sql]) => String(sql).includes("update wallets")),
+    ).toBe(false);
+    expect(pool.query).toHaveBeenCalledWith("rollback");
   });
 });

@@ -36,9 +36,9 @@ The polymorphic core. Only this list paginates (cursor-based).
 | Method | Path | Query / Body | Returns |
 | :----- | :--- | :----------- | :------ |
 | `GET` | `/transactions` | `from?`, `to?`, `method?` (`all\|debit\|credit`), `category?` (uuid), `wallet?` (uuid), `cursor?`, `limit?` (default 50, max 200) | `{ summary, items, nextCursor }` |
-| `POST` | `/transactions` | Body: discriminated on `method`. **debit** `{ method, amount, date, description?, categoryId?, fromType, fromId?, toType, toId? }`; **credit** `{ method, amount, date, description?, categoryId?, fromId, toType, toId?, term?, installmentTotal? }` | `201` with `Transaction[]` — N rows when `installmentTotal > 1`. Invalid from/to pair → `422`. |
+| `POST` | `/transactions` | Body: discriminated on `method`. **debit** `{ method, amount, date, description?, categoryAllocations, fromType, fromId?, toType, toId? }`; **credit** `{ method, amount, date, description?, categoryAllocations, fromId, toType, toId?, term?, installmentTotal? }` | `201` with `Transaction[]` — N rows when `installmentTotal > 1`. Invalid from/to pair → `422`. |
 | `GET` | `/transactions/:id` | — | `Transaction` |
-| `PATCH` | `/transactions/:id` | Body: `amount?`, `date?`, `description?` (nullable), `categoryId?` (nullable) — ≥1 required | Editing one installment affects only that row. Adjusts wallet balance for debit. |
+| `PATCH` | `/transactions/:id` | Body: `amount?`, `date?`, `description?` (nullable), `categoryAllocations?` (replacement array, empty clears), or legacy `categoryId?` (nullable) — ≥1 required | Editing one installment affects only that row. Adjusts wallet balance for debit. |
 | `DELETE` | `/transactions/:id` | — | `204`. Reverses wallet-balance delta for debit. |
 
 ## Credit
@@ -126,10 +126,10 @@ endpoints: `GET /wallets?active=true`, `GET /revenues?active=true` (referenceabl
 
 ### Cleanup and explanation additions
 
-- New debit/credit transaction creation requires active `categoryId`.
+- New debit/credit transaction creation requires `categoryAllocations: [{categoryId, amount}]` with positive explicit amounts summing exactly to the total (1–100 unique active categories). Legacy `categoryId` assigns the full amount to one category.
 - Transaction list: `search` (literal description substring), `wallet`, `category` (UUID or `uncategorized`);
   all filters apply to both items and the complete period summary.
-- `PATCH /transactions/categories` — `{ transactionIds: UUID[1..200], categoryId: UUID }`, returns `{ updated }`;
+- `PATCH /transactions/categories` — `{ transactionIds: UUID[1..200], categoryId: UUID }`, returns `{ updated }`; replaces existing allocations with the full amount in the selected category;
   atomic, validates all selected IDs and an active category.
 - `GET /dashboard/details?from&to&metric` — metric `income|outcome|net|savingsRate`;
   exact contribution rows and aggregate values; dates distinguish counting from purchase and settlement.

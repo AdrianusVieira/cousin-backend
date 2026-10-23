@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import type { TxnFromType, TxnMethod, TxnToType } from "../../lib/transactions.js";
+import type { CategoryAllocationInput } from "./allocations.js";
 import type { FullTransactionRow } from "./transactions.types.js";
 
 export interface WalletBalanceTxnRow {
@@ -74,8 +75,11 @@ export const FULL_TXN_SELECT = `
     to_char(t.date, 'YYYY-MM-DD') as date,
     t.description,
     t.method,
-    t.category_id,
-    c.name as category_name,
+    coalesce((select json_agg(json_build_object(
+      'categoryId', a.category_id, 'categoryName', c.name, 'amount', a.amount::text
+    ) order by c.name, c.id)
+      from transaction_category_allocations a join categories c on c.id = a.category_id
+      where a.transaction_id = t.id), '[]'::json) as category_allocations,
     t.from_type,
     t.from_id,
     case t.from_type
@@ -98,8 +102,7 @@ export const FULL_TXN_SELECT = `
     to_char(t.term, 'YYYY-MM-DD') as term,
     t.created_at,
     t.updated_at
-  from transactions t
-  left join categories c on c.id = t.category_id`;
+  from transactions t`;
 
 export interface TransactionListFilter {
   from: string;
@@ -124,10 +127,14 @@ export async function findAllTransactions(
     conditions.push(`t.method = $${values.length}`);
   }
   if (filter.categoryId === "uncategorized") {
-    conditions.push("t.category_id is null");
+    conditions.push(
+      "not exists (select 1 from transaction_category_allocations a where a.transaction_id = t.id)",
+    );
   } else if (filter.categoryId) {
     values.push(filter.categoryId);
-    conditions.push(`t.category_id = $${values.length}`);
+    conditions.push(
+      `exists (select 1 from transaction_category_allocations a where a.transaction_id = t.id and a.category_id = $${values.length})`,
+    );
   }
   if (filter.search) {
     values.push(filter.search);
@@ -162,10 +169,12 @@ export async function findTransactionById(
   id: string,
   lock = false,
 ): Promise<FullTransactionRow | null> {
-  const { rows } = await db.query<FullTransactionRow>(
-    `${FULL_TXN_SELECT} where t.id = $1${lock ? " for update of t" : ""}`,
-    [id],
-  );
+  if (lock) {
+    // Read allocations in a fresh statement after acquiring the parent lock.
+    // A competing edit may have replaced them while we were waiting.
+    await db.query("select id from transactions where id = $1 for update", [id]);
+  }
+  const { rows } = await db.query<FullTransactionRow>(`${FULL_TXN_SELECT} where t.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -200,7 +209,8 @@ export async function findTransactionSummary(
   db: Pool | PoolClient,
   filter: Omit<TransactionListFilter, "cursor" | "limit">,
 ): Promise<TransactionSummaryRow> {
-  const conditions: string[] = ["date between $1 and $2"];
+  const conditions: string[] = ["t.date between $1 and $2"];
+  let summaryAmount = "t.amount";
   const values: unknown[] = [filter.from, filter.to];
 
   if (filter.method && filter.method !== "all") {
@@ -208,10 +218,15 @@ export async function findTransactionSummary(
     conditions.push(`method = $${values.length}`);
   }
   if (filter.categoryId === "uncategorized") {
-    conditions.push("category_id is null");
+    conditions.push(
+      "not exists (select 1 from transaction_category_allocations a where a.transaction_id = t.id)",
+    );
   } else if (filter.categoryId) {
     values.push(filter.categoryId);
-    conditions.push(`category_id = $${values.length}`);
+    conditions.push(
+      `exists (select 1 from transaction_category_allocations a where a.transaction_id = t.id and a.category_id = $${values.length})`,
+    );
+    summaryAmount = `(select a.amount from transaction_category_allocations a where a.transaction_id = t.id and a.category_id = $${values.length})`;
   }
   if (filter.search) {
     values.push(filter.search);
@@ -227,9 +242,9 @@ export async function findTransactionSummary(
   const where = `where ${conditions.join(" and ")}`;
   const { rows } = await db.query<TransactionSummaryRow>(
     `select
-       sum(case when from_type in ('external','revenue') and to_type = 'wallet' then amount else 0.00 end)::text as total_in,
-       sum(case when from_type = 'wallet' and to_type in ('external','bill') then amount else 0.00 end)::text as total_out
-     from transactions ${where}`,
+       sum(case when from_type in ('external','revenue') and to_type = 'wallet' then ${summaryAmount} else 0.00 end)::text as total_in,
+       sum(case when from_type = 'wallet' and to_type in ('external','bill') then ${summaryAmount} else 0.00 end)::text as total_out
+     from transactions t ${where}`,
     values,
   );
   return rows[0]!;
@@ -240,7 +255,7 @@ export interface InsertTransactionInput {
   date: string;
   description?: string;
   method: TxnMethod;
-  categoryId?: string;
+  categoryAllocations?: CategoryAllocationInput[];
   fromType: TxnFromType;
   fromId?: string;
   toType: TxnToType;
@@ -258,22 +273,21 @@ export async function insertTransaction(
 ): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
     `insert into transactions (
-       amount, date, description, method, category_id,
+       amount, date, description, method,
        from_type, from_id, to_type, to_id,
        installment_number, installment_total, credit_group_id,
        settled, term
      ) values (
-       $1, $2, $3, $4, $5,
-       $6, $7, $8, $9,
-       $10, $11, $12,
-       $13, $14
+       $1, $2, $3, $4,
+       $5, $6, $7, $8,
+       $9, $10, $11,
+       $12, $13
      ) returning id`,
     [
       input.amount,
       input.date,
       input.description ?? null,
       input.method,
-      input.categoryId ?? null,
       input.fromType,
       input.fromId ?? null,
       input.toType,
@@ -285,14 +299,17 @@ export async function insertTransaction(
       input.term ?? null,
     ],
   );
-  return rows[0]!.id;
+  const id = rows[0]!.id;
+  if (input.categoryAllocations?.length) {
+    await replaceCategoryAllocations(db, id, input.categoryAllocations);
+  }
+  return id;
 }
 
 export interface UpdateTransactionFields {
   amount?: string;
   date?: string;
   description?: string | null;
-  categoryId?: string | null;
 }
 
 export async function updateTransaction(
@@ -315,11 +332,10 @@ export async function updateTransaction(
     values.push(fields.description ?? null);
     sets.push(`description = $${values.length}`);
   }
-  if (fields.categoryId !== undefined) {
-    values.push(fields.categoryId ?? null);
-    sets.push(`category_id = $${values.length}`);
+  if (!sets.length) {
+    await db.query("update transactions set updated_at = now() where id = $1", [id]);
+    return;
   }
-
   values.push(id);
   await db.query(`update transactions set ${sets.join(", ")} where id = $${values.length}`, values);
 }
@@ -373,13 +389,35 @@ export async function setTransactionsSettled(
   return rows;
 }
 
+export async function replaceCategoryAllocations(
+  db: Pool | PoolClient,
+  id: string,
+  allocations: CategoryAllocationInput[],
+): Promise<void> {
+  await db.query("delete from transaction_category_allocations where transaction_id = $1", [id]);
+  if (allocations.length) {
+    await db.query(
+      `insert into transaction_category_allocations (transaction_id, category_id, amount)
+       select $1, a.category_id, a.amount
+       from unnest($2::uuid[], $3::numeric[]) as a(category_id, amount)`,
+      [id, allocations.map((item) => item.categoryId), allocations.map((item) => item.amount)],
+    );
+  }
+}
+
 export async function setTransactionCategories(
   db: PoolClient,
   ids: string[],
   categoryId: string,
 ): Promise<void> {
-  await db.query("update transactions set category_id = $2 where id = any($1::uuid[])", [
-    ids,
-    categoryId,
-  ]);
+  await db.query(
+    "delete from transaction_category_allocations where transaction_id = any($1::uuid[])",
+    [ids],
+  );
+  await db.query(
+    `insert into transaction_category_allocations (transaction_id, category_id, amount)
+     select id, $2, amount from transactions where id = any($1::uuid[])`,
+    [ids, categoryId],
+  );
+  await db.query("update transactions set updated_at = now() where id = any($1::uuid[])", [ids]);
 }

@@ -45,7 +45,7 @@
 | `created_at`  | timestamp | required                |
 | `updated_at`  | timestamp | required                |
 
-**Relationships:** Referenced by Transaction as `category_id`. No deletion — archived only.
+**Relationships:** Referenced by Transaction through `transaction_category_allocations` (category plus allocated amount). No deletion — archived only.
 
 ---
 
@@ -120,7 +120,7 @@
 | `date`               | date      | required                                    |
 | `description`        | varchar   | optional                                    |
 | `method`             | enum      | required (`debit`, `credit`)                |
-| `category_id`        | uuid      | optional                                    |
+| `categoryAllocations` | allocation[] | category + explicit decimal amount; may be empty for historical rows |
 | `from_type`          | enum      | required (`wallet`, `external`, `revenue`)  |
 | `from_id`            | uuid      | nullable (null when `from_type = external`) |
 | `to_type`            | enum      | required (`wallet`, `external`, `bill`)     |
@@ -135,4 +135,4 @@
 
 Wallet balance updates only when `method = debit`. `settled` is only meaningful for credit transactions; always `true` for debit. `term` defaults to the 15th of the current month for credit; null for debit. `credit_group_id` links installments of the same purchase; only present when `installment_total > 1`.
 
-**Relationships:** `from_id` references Wallet or Revenue depending on `from_type`. `to_id` references Wallet or Bill depending on `to_type`. References Category via `category_id`.
+**Relationships:** `from_id` references Wallet or Revenue depending on `from_type`. `to_id` references Wallet or Bill depending on `to_type`. References Categories through `transaction_category_allocations`; each allocation has its own decimal amount, and all amounts add up to the transaction total.

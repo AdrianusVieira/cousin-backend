@@ -20,9 +20,11 @@ import {
   findTransactionById,
   findTransactionSummary,
   insertTransaction,
+  replaceCategoryAllocations,
   setTransactionCategories,
   updateTransaction,
 } from "./transactions.repository.js";
+import { validateAllocationTotal, type CategoryAllocationInput } from "./allocations.js";
 import type { CreateTransactionInput, PatchTransactionInput } from "./transactions.schema.js";
 import { mapFullTransaction, type Transaction } from "./transactions.types.js";
 
@@ -194,7 +196,13 @@ export async function getTransaction(id: string): Promise<Transaction> {
 }
 
 export async function createTransaction(input: CreateTransactionInput): Promise<Transaction[]> {
-  await validateCategory(input.categoryId);
+  const categoryAllocations =
+    input.categoryAllocations ??
+    (input.categoryId ? [{ categoryId: input.categoryId, amount: input.amount }] : []);
+  if (!categoryAllocations.length)
+    throw new ValidationError({ categoryAllocations: "Choose at least one active category" });
+  validateAllocationTotal(input.amount, categoryAllocations);
+  await validateCategories(categoryAllocations);
   let fromType: TxnFromType;
   let fromId: string | undefined;
 
@@ -240,7 +248,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
           date: input.date,
           description: input.description,
           method: "credit",
-          categoryId: input.categoryId,
+          categoryAllocations,
           fromType,
           fromId,
           toType,
@@ -263,7 +271,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
           date: input.date,
           description: input.description,
           method: "credit",
-          categoryId: input.categoryId,
+          categoryAllocations,
           fromType,
           fromId,
           toType,
@@ -299,7 +307,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
       date: input.date,
       description: input.description,
       method: "debit",
-      categoryId: input.categoryId,
+      categoryAllocations,
       fromType,
       fromId,
       toType,
@@ -331,12 +339,31 @@ export async function patchTransaction(
   id: string,
   input: PatchTransactionInput,
 ): Promise<Transaction> {
-  if (input.categoryId) await validateCategory(input.categoryId);
   const client = await pool.connect();
   try {
     await client.query("begin");
     const existing = await findTransactionById(client, id, true);
     if (!existing) throw new NotFoundError("Transaction not found");
+    const amount = input.amount ?? existing.amount;
+    let allocations = input.categoryAllocations;
+    if (input.categoryId !== undefined) {
+      allocations = input.categoryId ? [{ categoryId: input.categoryId, amount }] : [];
+    } else if (allocations === undefined && input.amount !== undefined) {
+      allocations =
+        existing.category_allocations.length === 1
+          ? [{ categoryId: existing.category_allocations[0]!.categoryId, amount }]
+          : existing.category_allocations;
+    }
+    if (allocations !== undefined) {
+      validateAllocationTotal(amount, allocations);
+      // Historical archived assignments may be retained, but not newly selected.
+      await validateCategories(
+        allocations,
+        existing.category_allocations.map((item) => item.categoryId),
+        client,
+      );
+      await replaceCategoryAllocations(client, id, allocations);
+    }
     if (movesMoney(existing) && input.amount !== undefined) {
       const txn = {
         method: existing.method,
@@ -392,10 +419,33 @@ export async function deleteTransactionById(id: string): Promise<void> {
   }
 }
 
-async function validateCategory(id: string): Promise<void> {
-  const category = await findCategoryById(pool, id);
-  if (!category || category.archived) {
-    throw new ValidationError({ categoryId: "Choose an active category" });
+async function validateCategory(
+  id: string,
+  field = "categoryId",
+  retained = false,
+  db: Pool | PoolClient = pool,
+): Promise<void> {
+  const category = await findCategoryById(db, id);
+  if (!category || (category.archived && !retained)) {
+    throw new ValidationError({ [field]: "Choose an active category" });
+  }
+}
+
+async function validateCategories(
+  allocations: CategoryAllocationInput[],
+  retained: string[] = [],
+  db: Pool | PoolClient = pool,
+): Promise<void> {
+  if (new Set(allocations.map((item) => item.categoryId)).size !== allocations.length) {
+    throw new ValidationError({ categoryAllocations: "Choose each category only once" });
+  }
+  for (const item of allocations) {
+    await validateCategory(
+      item.categoryId,
+      "categoryAllocations",
+      retained.includes(item.categoryId),
+      db,
+    );
   }
 }
 

@@ -4,13 +4,12 @@ import type { CategoryListRow, CategoryRow } from "./categories.types.js";
 
 const txnIncomeOutcome = `
   select
-    category_id,
-    sum(case when from_type in ('external','revenue') and to_type = 'wallet' then amount else 0.00 end)::text as income,
-    sum(case when from_type = 'wallet' and to_type in ('external','bill') then amount else 0.00 end)::text as outcome
-  from transactions
+    a.category_id,
+    sum(case when from_type in ('external','revenue') and to_type = 'wallet' then a.amount else 0.00 end)::text as income,
+    sum(case when from_type = 'wallet' and to_type in ('external','bill') then a.amount else 0.00 end)::text as outcome
+  from transactions t join transaction_category_allocations a on a.transaction_id = t.id
   where date between $1 and $2
-    and category_id is not null
-  group by category_id`;
+  group by a.category_id`;
 
 export async function findAllCategories(
   db: Pool | PoolClient,
@@ -39,10 +38,7 @@ export async function findCategoryById(
   db: Pool | PoolClient,
   id: string,
 ): Promise<CategoryRow | null> {
-  const { rows } = await db.query<CategoryRow>(
-    `select * from categories where id = $1`,
-    [id],
-  );
+  const { rows } = await db.query<CategoryRow>(`select * from categories where id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -59,10 +55,10 @@ export async function findCategoryBreakdown(
   }>(
     `select
        date_trunc('${bucket}', date)::text as bucket,
-       sum(case when from_type in ('external','revenue') and to_type = 'wallet' then amount else 0.00 end)::text as income,
-       sum(case when from_type = 'wallet' and to_type in ('external','bill') then amount else 0.00 end)::text as outcome
-     from transactions
-     where category_id = $1
+       sum(case when from_type in ('external','revenue') and to_type = 'wallet' then a.amount else 0.00 end)::text as income,
+       sum(case when from_type = 'wallet' and to_type in ('external','bill') then a.amount else 0.00 end)::text as outcome
+     from transactions t join transaction_category_allocations a on a.transaction_id = t.id
+     where a.category_id = $1
        and date between $2 and $3
      group by date_trunc('${bucket}', date)
      order by bucket asc`,

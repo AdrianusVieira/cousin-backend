@@ -22,6 +22,10 @@ import { getDashboard } from "../src/modules/dashboard/dashboard.service.js";
 import { getDashboardDetails } from "../src/modules/dashboard/dashboard.details.js";
 import { settleCredit } from "../src/modules/credit/credit.service.js";
 import {
+  findAllCategories,
+  findCategoryBreakdown,
+} from "../src/modules/categories/categories.repository.js";
+import {
   bulkCategorize,
   createTransaction,
   deleteTransactionById,
@@ -81,6 +85,47 @@ beforeEach(async () => {
 });
 
 describe("financial operations against PostgreSQL", () => {
+  it("migrates historical assignments exactly and preserves uncategorized rows", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const migrationSchema = `migration_${randomUUID().replaceAll("-", "")}`;
+      await client.query(`create schema ${migrationSchema}`);
+      await client.query(`set local search_path = ${migrationSchema}, public`);
+      const directory = new URL("../src/db/migrations/", import.meta.url);
+      const files = (await readdir(directory)).filter((name) => name.endsWith(".sql")).sort();
+      for (const file of files.filter((name) => name < "012")) {
+        await client.query(await readFile(new URL(file, directory), "utf8"));
+      }
+      await client.query(
+        "insert into categories (id, name, archived) values ($1, 'Historical', true)",
+        [categoryId],
+      );
+      await client.query(
+        `insert into transactions (amount, date, method, category_id, from_type, from_id, to_type, to_id)
+         values (100.01, $1, 'debit', $2, 'wallet', $3, 'external', null),
+                (-5.03, $1, 'debit', $2, 'wallet', $3, 'wallet', $3),
+                (40, $1, 'debit', null, 'wallet', $3, 'external', null)`,
+        [date, categoryId, walletId],
+      );
+      await client.query(
+        await readFile(new URL("012_transaction_category_allocations.sql", directory), "utf8"),
+      );
+      const result = await client.query(
+        `select t.amount::text as total, a.amount::text as allocated, a.category_id
+         from transactions t left join transaction_category_allocations a on a.transaction_id = t.id
+         order by t.amount`,
+      );
+      expect(result.rows).toEqual([
+        { total: "-5.03", allocated: "-5.03", category_id: categoryId },
+        { total: "40.00", allocated: null, category_id: null },
+        { total: "100.01", allocated: "100.01", category_id: categoryId },
+      ]);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+  });
   it("creates, edits and reverses debit balance changes", async () => {
     const [transaction] = await debit("12.34");
     expect(await balance()).toBe("987.66");
@@ -155,13 +200,121 @@ describe("financial operations against PostgreSQL", () => {
     await expect(
       bulkCategorize({ categoryId: nextCategory, transactionIds: [transaction!.id, randomUUID()] }),
     ).rejects.toThrow();
-    const { rows } = await pool.query("select category_id from transactions where id = $1", [
-      transaction!.id,
-    ]);
+    const { rows } = await pool.query(
+      "select category_id from transaction_category_allocations where transaction_id = $1",
+      [transaction!.id],
+    );
     expect(rows[0].category_id).toBe(categoryId);
     expect(
       await bulkCategorize({ categoryId: nextCategory, transactionIds: [transaction!.id] }),
     ).toEqual({ updated: 1 });
+  });
+  it("stores unequal amounts and uses them in category totals without duplicating wallet or dashboard amounts", async () => {
+    const otherId = randomUUID();
+    await pool.query("insert into categories (id, name) values ($1, 'Household')", [otherId]);
+    const allocations = [
+      { categoryId, amount: "70.01" },
+      { categoryId: otherId, amount: "30.00" },
+    ];
+    const [transaction] = await createTransaction({
+      amount: "100.01",
+      categoryAllocations: allocations,
+      date,
+      description: "Supermarket",
+      fromId: walletId,
+      fromType: "wallet",
+      method: "debit",
+      toType: "external",
+    });
+    expect(transaction!.category).toBeNull();
+    expect(
+      transaction!.categoryAllocations.map(({ categoryId, amount }) => ({ categoryId, amount })),
+    ).toEqual(allocations);
+    expect(await balance()).toBe("899.99");
+    const filtered = await listTransactions({ from: date, to: date, category: otherId, limit: 50 });
+    expect(filtered.items).toHaveLength(1);
+    expect(filtered.summary.totalOut).toBe("30.00");
+    const all = await listTransactions({ from: date, to: date, limit: 50 });
+    expect(all.summary.totalOut).toBe("100.01");
+    const categories = await findAllCategories(pool, { from: date, to: date });
+    expect(categories.find((item) => item.id === categoryId)?.outcome).toBe("70.01");
+    expect(categories.find((item) => item.id === otherId)?.outcome).toBe("30.00");
+    const breakdown = await findCategoryBreakdown(pool, otherId, {
+      from: date,
+      to: date,
+      granularity: "month",
+    });
+    expect(breakdown[0]?.outcome).toBe("30.00");
+    const dashboard = await getDashboard({ from: date, to: date });
+    expect(dashboard.outcome.total).toBe("100.01");
+    const details = await getDashboardDetails({ from: date, to: date, metric: "outcome" });
+    expect(details.items).toHaveLength(1);
+    await expect(patchTransaction(transaction!.id, { amount: "120.00" })).rejects.toThrow();
+    expect(await balance()).toBe("899.99");
+    const updated = await patchTransaction(transaction!.id, {
+      amount: "120.00",
+      categoryAllocations: [
+        { categoryId, amount: "90.00" },
+        { categoryId: otherId, amount: "30.00" },
+      ],
+    });
+    expect(updated.amount).toBe("120.00");
+    expect(await balance()).toBe("880.00");
+    await bulkCategorize({ categoryId, transactionIds: [transaction!.id] });
+    expect(
+      (await listTransactions({ from: date, to: date, category: otherId, limit: 50 })).items,
+    ).toHaveLength(0);
+    await deleteTransactionById(transaction!.id);
+    expect((await pool.query("select * from transaction_category_allocations")).rows).toHaveLength(
+      0,
+    );
+    expect(await balance()).toBe("1000.00");
+  });
+  it("preserves allocations in each credit installment and settles the total once", async () => {
+    const otherId = randomUUID();
+    await pool.query("insert into categories (id, name) values ($1, 'Household')", [otherId]);
+    const created = await createTransaction({
+      amount: "10.00",
+      categoryAllocations: [
+        { categoryId, amount: "7.00" },
+        { categoryId: otherId, amount: "3.00" },
+      ],
+      date,
+      fromId: walletId,
+      method: "credit",
+      toType: "external",
+      term: date,
+      installmentTotal: 2,
+    });
+    expect(created).toHaveLength(2);
+    expect(created.every((item) => item.categoryAllocations.length === 2)).toBe(true);
+    expect(await balance()).toBe("1000.00");
+    await settleCredit({ transactionIds: created.map((item) => item.id) });
+    expect(await balance()).toBe("980.00");
+  });
+  it("rejects a newly selected archived category and keeps existing allocations on failure", async () => {
+    const [transaction] = await debit("12.34");
+    const otherId = randomUUID();
+    await pool.query("insert into categories (id, name, archived) values ($1, 'Old', true)", [
+      otherId,
+    ]);
+    await expect(
+      patchTransaction(transaction!.id, {
+        categoryAllocations: [
+          { categoryId, amount: "10.00" },
+          { categoryId: otherId, amount: "2.34" },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(
+      (
+        await pool.query(
+          "select amount::text from transaction_category_allocations where transaction_id = $1",
+          [transaction!.id],
+        )
+      ).rows,
+    ).toEqual([{ amount: "12.34" }]);
+    expect(await balance()).toBe("987.66");
   });
   it("matches dashboard totals to their drill-down rows", async () => {
     await debit("12.34");

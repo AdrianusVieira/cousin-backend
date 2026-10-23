@@ -140,7 +140,8 @@ interface Transaction {
   date: ISODate;
   description: string | null;
   method: "debit" | "credit";
-  category: { id: UUID; name: string } | null;
+  category: { id: UUID; name: string } | null; // compatibility: only set for a single allocation
+  categoryAllocations: Array<{ categoryId: UUID; categoryName: string; amount: Money }>;
   from: TxnEndpoint;
   to: TxnEndpoint;
   installmentNumber: number | null;
@@ -218,7 +219,7 @@ interface CreateDebitTransaction {
   amount: Money;
   date: ISODate;
   description?: string;
-  categoryId: UUID;
+  categoryAllocations: Array<{ categoryId: UUID; amount: Money }>; // exact user-entered amounts
   fromType: "wallet" | "external" | "revenue";
   fromId?: UUID; // omit iff fromType = 'external'
   toType: "wallet" | "external" | "bill";
@@ -231,7 +232,7 @@ interface CreateCreditTransaction {
   amount: Money;
   date: ISODate;
   description?: string;
-  categoryId: UUID;
+  categoryAllocations: Array<{ categoryId: UUID; amount: Money }>; // exact user-entered amounts
   fromId: UUID; // wallet
   toType: "wallet" | "external" | "bill";
   toId?: UUID;
@@ -564,7 +565,7 @@ The legal `fromType → toType` map (six combinations) is a FE constant; these c
 
 ## October 2026 cleanup and reporting update
 
-New transaction creation requires an active `categoryId` for both debit and credit. Historical
+New transaction creation requires one or more active categories through `categoryAllocations`, each with an explicit decimal-string amount. Legacy `categoryId` remains accepted for a single full-amount assignment. Historical
 uncategorized transactions remain readable/editable; automatic wallet adjustments are exempt.
 Description search and wallet/category filters apply to both pagination and full summary totals.
 Bulk category assignment is atomic and accepts up to 200 selected transaction IDs.
@@ -573,3 +574,29 @@ Wallets offers a read-only 30/60/90-day scheduled cash forecast alongside histor
 The preview includes only generated obligations and card installments, subtracts linked payments
 from outstanding bill/revenue values, and assumes overdue commitments fall today.
 See `endpoints.md` for the additional endpoints and `README.md` for assumptions.
+
+
+## Transaction category allocations
+
+`POST /transactions` accepts `categoryAllocations: [{ categoryId: UUID, amount: Money }]`.
+Choose 1–100 unique active categories. Every amount is positive, and amounts must sum exactly
+to the transaction's amount in integer cents. There is no automatic equal distribution.
+Existing single-category assignments migrate to one allocation for the full transaction amount;
+uncategorized historical transactions retain an empty array.
+
+`PATCH /transactions/:id` accepts `categoryAllocations` as a complete replacement; `[]` clears
+categorization. An amount-only edit updates a single allocation to the new total. For an existing
+split, changing the total requires replacement allocations that add up to the new amount.
+Existing archived categories can be retained when editing, but cannot be newly selected.
+`categoryId` is still accepted as a legacy single-category replacement (nullable to clear),
+and cannot be combined with `categoryAllocations` in the same request.
+
+Category-filtered transaction summaries and category breakdowns sum allocated amounts, while
+unfiltered summaries, wallet movements, settlement, and dashboard totals use each transaction's
+full amount once. Transaction rows retain the full amount plus all allocations in API responses;
+the UI displays the selected category's allocation when filtered. Credit installment expansion
+copies the submitted allocation amounts onto each installment, matching the per-installment
+meaning of `amount`. Bulk categorization replaces all allocations with one full-amount allocation.
+
+Deploy migration `012_transaction_category_allocations.sql` together with the new backend;
+the former `transactions.category_id` column is replaced by the allocation table.

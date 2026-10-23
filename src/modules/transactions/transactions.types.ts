@@ -1,4 +1,11 @@
-import { classifyTransaction, type TxnFromType, type TxnKind, type TxnSign, type TxnToType } from "../../lib/transactions.js";
+import type { CategoryAllocationInput } from "./allocations.js";
+import {
+  classifyTransaction,
+  type TxnFromType,
+  type TxnKind,
+  type TxnSign,
+  type TxnToType,
+} from "../../lib/transactions.js";
 
 export interface FullTransactionRow {
   id: string;
@@ -6,8 +13,7 @@ export interface FullTransactionRow {
   date: string;
   description: string | null;
   method: "debit" | "credit";
-  category_id: string | null;
-  category_name: string | null;
+  category_allocations: CategoryAllocation[];
   from_type: TxnFromType;
   from_id: string | null;
   from_name: string | null;
@@ -30,6 +36,10 @@ export interface TxnEndpointShape {
   name: string | null;
 }
 
+export interface CategoryAllocation extends CategoryAllocationInput {
+  categoryName: string;
+}
+
 export interface Transaction {
   id: string;
   amount: string;
@@ -37,6 +47,7 @@ export interface Transaction {
   description: string | null;
   method: "debit" | "credit";
   category: { id: string; name: string } | null;
+  categoryAllocations: CategoryAllocation[];
   from: TxnEndpointShape;
   to: TxnEndpointShape;
   installmentNumber: number | null;
@@ -66,9 +77,13 @@ export function mapFullTransaction(row: FullTransactionRow): Transaction {
     description: row.description,
     method: row.method,
     category:
-      row.category_id && row.category_name
-        ? { id: row.category_id, name: row.category_name }
+      row.category_allocations.length === 1
+        ? {
+            id: row.category_allocations[0]!.categoryId,
+            name: row.category_allocations[0]!.categoryName,
+          }
         : null,
+    categoryAllocations: row.category_allocations,
     from: { type: row.from_type, id: row.from_id, name: row.from_name },
     to: { type: row.to_type, id: row.to_id, name: row.to_name },
     installmentNumber: row.installment_number,

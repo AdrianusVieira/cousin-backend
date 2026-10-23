@@ -170,7 +170,6 @@ create table transactions (
   date               date          not null,
   description        varchar,
   method             txn_method    not null,
-  category_id        uuid          references categories(id),
 
   from_type          txn_from_type not null,
   from_id            uuid,                       -- no FK: polymorphic, see notes
@@ -208,7 +207,6 @@ create table transactions (
 create index txn_date_idx        on transactions (date);
 create index txn_from_idx        on transactions (from_type, from_id);
 create index txn_to_idx          on transactions (to_type, to_id);
-create index txn_category_idx    on transactions (category_id);
 create index txn_credit_grp_idx  on transactions (credit_group_id);
 -- statement grouping (Credit view): wallet + term + settlement
 create index txn_credit_stmt_idx on transactions (to_id, term)
@@ -253,3 +251,24 @@ I've put balance maintenance in the **application layer** (inside a transaction)
 - **App-level (chosen):** all money logic in one place, in TypeScript, unit-testable, version-controlled with the BE. Risk: a write that bypasses the BE (manual SQL, a second client) desyncs the balance.
 - **DB trigger:** balance is correct no matter who writes, including direct Supabase access. Risk: core money logic split across two languages, harder to test, easy to forget when reasoning about the system.
   For a single-BE-owner setup the app-level choice is usually right. If you expect to ever mutate transactions from anywhere but this backend (Supabase dashboard, scripts, a second service), the trigger is the safer call. Tell me which assumption holds.
+
+
+## Transaction category allocations (migration 012)
+
+The former `transactions.category_id` and its index are replaced by:
+
+```sql
+create table transaction_category_allocations (
+  transaction_id uuid not null references transactions(id) on delete cascade,
+  category_id uuid not null references categories(id),
+  amount numeric(14,2) not null,
+  primary key (transaction_id, category_id)
+);
+create index txn_allocation_category_idx on transaction_category_allocations(category_id);
+```
+
+The migration backfills existing category assignments with the full transaction amount.
+The application validates unique active categories, positive amounts for explicit allocations,
+and exact allocation sums within the transaction that writes the parent transaction and balances.
+Signed historical adjustments retain their original amount during migration and legacy bulk assignment.
+Read category reports from allocation amounts; wallet and dashboard totals still read transaction amounts.

@@ -169,12 +169,12 @@ export async function findDashboardContributions(
       select t.id, 'transaction' as entity,
         case when t.from_type = 'wallet' then 'outcome' else 'income' end as direction,
         case when ${PENDING_CREDIT} then 'pendingCredit' else 'settled' end as state,
-        coalesce(nullif(t.description, ''), c.name, 'Transaction') as label,
+        coalesce(nullif(t.description, ''), (select string_agg(c.name, ', ' order by c.name) from transaction_category_allocations a join categories c on c.id = a.category_id where a.transaction_id = t.id), 'Transaction') as label,
         t.amount::text as amount,
         to_char(${CASH_DATE}, 'YYYY-MM-DD') as date,
         to_char(t.date, 'YYYY-MM-DD') as "purchaseDate",
         to_char(case when t.method = 'credit' then t.settled_at else t.date end, 'YYYY-MM-DD') as "settlementDate"
-      from transactions t left join categories c on c.id = t.category_id
+      from transactions t
       where ${CASH_DATE} between $1 and $2 and (
         (t.from_type in ('external', 'revenue') and t.to_type = 'wallet') or
         (t.from_type = 'wallet' and t.to_type in ('external', 'bill'))
