@@ -8,7 +8,7 @@ const uuid = z.string().uuid("Must be a valid UUID");
 
 const debitTransactionSchema = z.object({
   amount: moneyString,
-  categoryId: uuid.optional(),
+  categoryId: uuid,
   date: isoDate,
   description: z.string().optional(),
   fromId: uuid.optional(),
@@ -20,7 +20,7 @@ const debitTransactionSchema = z.object({
 
 const creditTransactionSchema = z.object({
   amount: moneyString,
-  categoryId: uuid.optional(),
+  categoryId: uuid,
   date: isoDate,
   description: z.string().optional(),
   fromId: uuid,
@@ -45,15 +45,12 @@ export const patchTransactionSchema = z
   })
   .refine(
     (v) =>
-      v.amount !== undefined ||
-      v.date !== undefined ||
-      "description" in v ||
-      "categoryId" in v,
+      v.amount !== undefined || v.date !== undefined || "description" in v || "categoryId" in v,
     { message: "At least one field is required" },
   );
 
 export const transactionListQuerySchema = z.object({
-  category: uuid.optional(),
+  category: z.union([uuid, z.literal("uncategorized")]).optional(),
   cursor: z.string().optional(),
   from: isoDate.optional(),
   limit: z
@@ -61,8 +58,14 @@ export const transactionListQuerySchema = z.object({
     .optional()
     .transform((v) => (v ? Math.min(parseInt(v, 10), 200) : 50)),
   method: z.enum(["all", "debit", "credit"]).optional(),
+  search: z.string().trim().max(200).optional(),
   to: isoDate.optional(),
   wallet: uuid.optional(),
+});
+
+export const bulkCategorySchema = z.object({
+  categoryId: uuid,
+  transactionIds: z.array(uuid).min(1).max(200),
 });
 
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;

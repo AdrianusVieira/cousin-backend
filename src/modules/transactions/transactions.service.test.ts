@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../db/pool.js", () => ({ pool: { query: vi.fn() } }));
+vi.mock("../../db/pool.js", () => ({ pool: { query: vi.fn(), connect: vi.fn() } }));
 
 import { pool } from "../../db/pool.js";
 import { patchTransactionSchema } from "./transactions.schema.js";
@@ -33,6 +33,7 @@ const row: FullTransactionRow = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(pool.connect).mockResolvedValue({ query: pool.query, release: vi.fn() } as never);
   vi.mocked(pool.query).mockResolvedValue({ rows: [row] } as never);
 });
 
@@ -43,19 +44,17 @@ describe("patchTransaction", () => {
       vi.mocked(pool.query).mockResolvedValue({ rows: [{ ...row, method }] } as never);
       await patchTransaction(row.id, patchTransactionSchema.parse({ date: "2026-10-02" }));
 
-      expect(pool.query).toHaveBeenNthCalledWith(
-        2,
-        "update transactions set date = $1 where id = $2",
-        ["2026-10-02", row.id],
-      );
+      expect(pool.query).toHaveBeenCalledWith("update transactions set date = $1 where id = $2", [
+        "2026-10-02",
+        row.id,
+      ]);
     },
   );
 
   it("should still allow explicitly clearing the description", async () => {
     await patchTransaction(row.id, patchTransactionSchema.parse({ description: null }));
 
-    expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+    expect(pool.query).toHaveBeenCalledWith(
       "update transactions set description = $1 where id = $2",
       [null, row.id],
     );
@@ -64,8 +63,7 @@ describe("patchTransaction", () => {
   it("should still allow explicitly clearing the category without clearing the description", async () => {
     await patchTransaction(row.id, patchTransactionSchema.parse({ categoryId: null }));
 
-    expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+    expect(pool.query).toHaveBeenCalledWith(
       "update transactions set category_id = $1 where id = $2",
       [null, row.id],
     );
@@ -74,8 +72,7 @@ describe("patchTransaction", () => {
   it("should update the description without clearing the category", async () => {
     await patchTransaction(row.id, patchTransactionSchema.parse({ description: "Dinner" }));
 
-    expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+    expect(pool.query).toHaveBeenCalledWith(
       "update transactions set description = $1 where id = $2",
       ["Dinner", row.id],
     );

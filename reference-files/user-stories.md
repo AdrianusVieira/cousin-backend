@@ -238,11 +238,11 @@
 - Filterable by date, method, category, and wallet
   **As a user, I want to record a debit transaction so I can track actual money movement.**
 - `from` and `to` required (valid combinations per glossary)
-- Category optional; date and amount required
+- Active category, date and amount required
 - Wallet balance updated for involved wallet(s)
   **As a user, I want to record a credit transaction so I can track credit card purchases.**
 - `from_type = wallet` required for tracking; `to` required
-- Category optional
+- Active category required
 - `term` defaults to the 15th of the current month; editable
 - `settled` defaults to false
 - If `installment_total > 1`: N transactions generated, linked by `credit_group_id`, sharing the same `date`; `term` advances one month per installment
@@ -269,3 +269,15 @@
 - Sets `settled = true` for all transactions in the group
   **As a user, I want to settle individual credit transactions so I can track partial settlement.**
 - Sets `settled = true` for that transaction only
+
+## October 2026 cleanup and reporting update
+
+New transaction creation requires an active `categoryId` for both debit and credit. Historical
+uncategorized transactions remain readable/editable; automatic wallet adjustments are exempt.
+Description search and wallet/category filters apply to both pagination and full summary totals.
+Bulk category assignment is atomic and accepts up to 200 selected transaction IDs.
+Dashboard totals can be inspected through `/dashboard/details` without changing their date basis.
+Wallets offers a read-only 30/60/90-day scheduled cash forecast alongside historical patrimony.
+The preview includes only generated obligations and card installments, subtracts linked payments
+from outstanding bill/revenue values, and assumes overdue commitments fall today.
+See `endpoints.md` for the additional endpoints and `README.md` for assumptions.

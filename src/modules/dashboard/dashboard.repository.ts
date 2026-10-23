@@ -120,9 +120,7 @@ export interface PendingCreditRow {
   total: string;
 }
 
-export async function findPendingCreditSummary(
-  db: Pool | PoolClient,
-): Promise<string> {
+export async function findPendingCreditSummary(db: Pool | PoolClient): Promise<string> {
   const { rows } = await db.query<PendingCreditRow>(
     `select coalesce(sum(amount), 0.00)::text as total
      from transactions
@@ -144,6 +142,54 @@ export async function findPendingCreditPerWallet(
      where t.method = 'credit' and t.settled = false
      group by t.from_id, w.name
      order by w.name asc`,
+  );
+  return rows;
+}
+
+export interface DashboardContribution {
+  id: string;
+  entity: "transaction" | "bill" | "revenue";
+  direction: "income" | "outcome";
+  state: "settled" | "pendingCredit" | "unpaid" | "unreceived";
+  label: string;
+  amount: string;
+  date: string;
+  purchaseDate: string | null;
+  settlementDate: string | null;
+}
+
+/** Same inclusion rules as the dashboard aggregates, including manual bill/revenue flags. */
+export async function findDashboardContributions(
+  db: Pool | PoolClient,
+  period: { from: string; to: string },
+): Promise<DashboardContribution[]> {
+  const { rows } = await db.query<DashboardContribution>(
+    `
+    select * from (
+      select t.id, 'transaction' as entity,
+        case when t.from_type = 'wallet' then 'outcome' else 'income' end as direction,
+        case when ${PENDING_CREDIT} then 'pendingCredit' else 'settled' end as state,
+        coalesce(nullif(t.description, ''), c.name, 'Transaction') as label,
+        t.amount::text as amount,
+        to_char(${CASH_DATE}, 'YYYY-MM-DD') as date,
+        to_char(t.date, 'YYYY-MM-DD') as "purchaseDate",
+        to_char(case when t.method = 'credit' then t.settled_at else t.date end, 'YYYY-MM-DD') as "settlementDate"
+      from transactions t left join categories c on c.id = t.category_id
+      where ${CASH_DATE} between $1 and $2 and (
+        (t.from_type in ('external', 'revenue') and t.to_type = 'wallet') or
+        (t.from_type = 'wallet' and t.to_type in ('external', 'bill'))
+      )
+      union all
+      select id, 'bill', 'outcome', 'unpaid', name, value::text,
+        to_char(term, 'YYYY-MM-DD'), null, null
+      from bills where not paid and term between $1 and $2
+      union all
+      select id, 'revenue', 'income', 'unreceived', name, value::text,
+        to_char(term, 'YYYY-MM-DD'), null, null
+      from revenues where not received and term between $1 and $2
+    ) contributions order by date desc, id
+  `,
+    [period.from, period.to],
   );
   return rows;
 }

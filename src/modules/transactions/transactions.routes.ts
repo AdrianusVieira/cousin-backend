@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import {
+  bulkCategorySchema,
   createTransactionSchema,
   patchTransactionSchema,
   transactionListQuerySchema,
 } from "./transactions.schema.js";
 import {
+  bulkCategorize,
   createTransaction,
   deleteTransactionById,
   getTransaction,
@@ -13,6 +15,10 @@ import {
 } from "./transactions.service.js";
 
 export async function registerTransactionRoutes(app: FastifyInstance) {
+  app.patch("/transactions/categories", async (request) => {
+    return bulkCategorize(bulkCategorySchema.parse(request.body));
+  });
+
   app.get("/transactions", async (request) => {
     const query = transactionListQuerySchema.parse(request.query);
     return listTransactions(query);

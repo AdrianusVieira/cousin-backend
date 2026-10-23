@@ -4,16 +4,23 @@ import { pool } from "../../db/pool.js";
 import { toISODate, today } from "../../lib/date.js";
 import { NotFoundError, ValidationError } from "../../lib/errors.js";
 import { fromCents, toCents } from "../../lib/money.js";
-import { classifyTransaction, type TxnFromType, type TxnToType, walletBalanceDelta } from "../../lib/transactions.js";
+import {
+  classifyTransaction,
+  type TxnFromType,
+  type TxnToType,
+  walletBalanceDelta,
+} from "../../lib/transactions.js";
+import { findCategoryById } from "../categories/categories.repository.js";
 import { findBillById } from "../bills/bills.repository.js";
 import { findRevenueById } from "../revenues/revenues.repository.js";
-import { findWalletById, updateWallet } from "../wallets/wallets.repository.js";
+import { findWalletById } from "../wallets/wallets.repository.js";
 import {
   deleteTransaction,
   findAllTransactions,
   findTransactionById,
   findTransactionSummary,
   insertTransaction,
+  setTransactionCategories,
   updateTransaction,
 } from "./transactions.repository.js";
 import type { CreateTransactionInput, PatchTransactionInput } from "./transactions.schema.js";
@@ -78,7 +85,10 @@ interface BalanceAffectingTxn {
 }
 
 /** Whether `row` has already moved money, and so needs reversing when edited or deleted. */
-export function movesMoney(row: { method: "debit" | "credit"; settled_at: string | null }): boolean {
+export function movesMoney(row: {
+  method: "debit" | "credit";
+  settled_at: string | null;
+}): boolean {
   return row.method === "debit" || row.settled_at !== null;
 }
 
@@ -94,7 +104,7 @@ export async function applyBalanceDeltas(
 
   const wallets = new Set([fromWallet, toWallet].filter(Boolean) as string[]);
 
-  for (const walletId of wallets) {
+  for (const walletId of [...wallets].sort()) {
     const delta = walletBalanceDelta(
       {
         method: txn.method,
@@ -109,10 +119,11 @@ export async function applyBalanceDeltas(
     );
     if (delta === 0) continue;
 
-    const row = await findWalletById(client, walletId);
-    if (!row) continue;
-    const newBalance = fromCents(toCents(row.balance) + delta * sign);
-    await updateWallet(client, walletId, { balance: newBalance });
+    // Atomic increments preserve simultaneous payments; sorted wallet order avoids transfer deadlocks.
+    await client.query("update wallets set balance = balance + $2::numeric where id = $1", [
+      walletId,
+      fromCents(delta * sign),
+    ]);
   }
 }
 
@@ -126,11 +137,13 @@ export async function listTransactions(query: {
   method?: "all" | "debit" | "credit";
   category?: string;
   wallet?: string;
+  search?: string;
   cursor?: string;
   limit: number;
 }) {
   const now = today();
-  const from = query.from ?? toISODate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+  const from =
+    query.from ?? toISODate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
   const to = query.to ?? toISODate(now);
 
   const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
@@ -140,6 +153,7 @@ export async function listTransactions(query: {
     to,
     method: query.method,
     categoryId: query.category,
+    search: query.search,
     walletId: query.wallet,
     cursor,
     limit: query.limit,
@@ -147,7 +161,14 @@ export async function listTransactions(query: {
 
   const [rows, summaryRow] = await Promise.all([
     findAllTransactions(pool, filter),
-    findTransactionSummary(pool, { from, to, method: query.method, categoryId: query.category, walletId: query.wallet }),
+    findTransactionSummary(pool, {
+      from,
+      to,
+      method: query.method,
+      categoryId: query.category,
+      walletId: query.wallet,
+      search: query.search,
+    }),
   ]);
 
   const hasMore = rows.length > query.limit;
@@ -173,6 +194,7 @@ export async function getTransaction(id: string): Promise<Transaction> {
 }
 
 export async function createTransaction(input: CreateTransactionInput): Promise<Transaction[]> {
+  await validateCategory(input.categoryId);
   let fromType: TxnFromType;
   let fromId: string | undefined;
 
@@ -205,8 +227,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
   if (input.method === "credit") {
     const now = today();
     const term =
-      input.term ??
-      toISODate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15)));
+      input.term ?? toISODate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15)));
     const installmentTotal = input.installmentTotal ?? 1;
 
     const client = await pool.connect();
@@ -310,69 +331,43 @@ export async function patchTransaction(
   id: string,
   input: PatchTransactionInput,
 ): Promise<Transaction> {
-  const existing = await findTransactionById(pool, id);
-  if (!existing) throw new NotFoundError("Transaction not found");
-
-  const updateFields = {
-    amount: input.amount,
-    date: input.date,
-    description: input.description,
-    categoryId: input.categoryId,
-  };
-
-  if (movesMoney(existing) && input.amount !== undefined) {
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
-
-      await applyBalanceDeltas(
-        client,
-        {
-          method: existing.method,
-          amount: toCents(existing.amount),
-          fromType: existing.from_type,
-          fromId: existing.from_id ?? undefined,
-          toType: existing.to_type,
-          toId: existing.to_id ?? undefined,
-          settled: true,
-        },
-        -1,
-      );
-
-      await applyBalanceDeltas(client, {
+  if (input.categoryId) await validateCategory(input.categoryId);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await findTransactionById(client, id, true);
+    if (!existing) throw new NotFoundError("Transaction not found");
+    if (movesMoney(existing) && input.amount !== undefined) {
+      const txn = {
         method: existing.method,
-        amount: toCents(input.amount),
+        amount: toCents(existing.amount),
         fromType: existing.from_type,
         fromId: existing.from_id ?? undefined,
         toType: existing.to_type,
         toId: existing.to_id ?? undefined,
         settled: true,
-      });
-
-      await updateTransaction(client, id, updateFields);
-      await client.query("commit");
-    } catch (e) {
-      await client.query("rollback");
-      throw e;
-    } finally {
-      client.release();
+      };
+      await applyBalanceDeltas(client, { ...txn, amount: toCents(input.amount) - txn.amount });
     }
-  } else {
-    await updateTransaction(pool, id, updateFields);
+    await updateTransaction(client, id, input);
+    const updated = await findTransactionById(client, id);
+    await client.query("commit");
+    return mapFullTransaction(updated!);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const updated = await findTransactionById(pool, id);
-  return mapFullTransaction(updated!);
 }
 
 export async function deleteTransactionById(id: string): Promise<void> {
-  const existing = await findTransactionById(pool, id);
-  if (!existing) throw new NotFoundError("Transaction not found");
-
-  if (movesMoney(existing)) {
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await findTransactionById(client, id, true);
+    if (!existing) throw new NotFoundError("Transaction not found");
+    if (movesMoney(existing)) {
       await applyBalanceDeltas(
         client,
         {
@@ -386,15 +381,43 @@ export async function deleteTransactionById(id: string): Promise<void> {
         },
         -1,
       );
-      await deleteTransaction(client, id);
-      await client.query("commit");
-    } catch (e) {
-      await client.query("rollback");
-      throw e;
-    } finally {
-      client.release();
     }
-  } else {
-    await deleteTransaction(pool, id);
+    await deleteTransaction(client, id);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function validateCategory(id: string): Promise<void> {
+  const category = await findCategoryById(pool, id);
+  if (!category || category.archived) {
+    throw new ValidationError({ categoryId: "Choose an active category" });
+  }
+}
+
+export async function bulkCategorize(input: { categoryId: string; transactionIds: string[] }) {
+  await validateCategory(input.categoryId);
+  const ids = [...new Set(input.transactionIds)];
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const { rows } = await client.query(
+      "select id from transactions where id = any($1::uuid[]) order by id for update",
+      [ids],
+    );
+    if (rows.length !== ids.length)
+      throw new NotFoundError("One or more transactions no longer exist");
+    await setTransactionCategories(client, ids, input.categoryId);
+    await client.query("commit");
+    return { updated: ids.length };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
 }
