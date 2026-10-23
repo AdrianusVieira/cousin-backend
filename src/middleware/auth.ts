@@ -55,4 +55,7 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
   } catch {
     throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token");
   }
+  if (!env.ALLOWED_USER_IDS.includes(request.user.id)) {
+    throw new ApiError(403, "FORBIDDEN", "This account does not have access to Cousin");
+  }
 }

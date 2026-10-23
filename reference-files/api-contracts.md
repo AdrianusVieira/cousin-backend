@@ -132,12 +132,7 @@ interface TxnEndpoint {
 }
 
 type TxnKind =
-  | "moneyIn"
-  | "moneyOut"
-  | "revenueRealized"
-  | "billPaid"
-  | "internalTransfer"
-  | "manualAdjustment";
+  "moneyIn" | "moneyOut" | "revenueRealized" | "billPaid" | "internalTransfer" | "manualAdjustment";
 
 interface Transaction {
   id: UUID;
@@ -223,7 +218,7 @@ interface CreateDebitTransaction {
   amount: Money;
   date: ISODate;
   description?: string;
-  categoryId?: UUID;
+  categoryId: UUID;
   fromType: "wallet" | "external" | "revenue";
   fromId?: UUID; // omit iff fromType = 'external'
   toType: "wallet" | "external" | "bill";
@@ -236,7 +231,7 @@ interface CreateCreditTransaction {
   amount: Money;
   date: ISODate;
   description?: string;
-  categoryId?: UUID;
+  categoryId: UUID;
   fromId: UUID; // wallet
   toType: "wallet" | "external" | "bill";
   toId?: UUID;
@@ -566,3 +561,15 @@ GET /categories?active=true
 ```
 
 The legal `fromType → toType` map (six combinations) is a FE constant; these calls only fill the id dropdown for the chosen type.
+
+## October 2026 cleanup and reporting update
+
+New transaction creation requires an active `categoryId` for both debit and credit. Historical
+uncategorized transactions remain readable/editable; automatic wallet adjustments are exempt.
+Description search and wallet/category filters apply to both pagination and full summary totals.
+Bulk category assignment is atomic and accepts up to 200 selected transaction IDs.
+Dashboard totals can be inspected through `/dashboard/details` without changing their date basis.
+Wallets offers a read-only 30/60/90-day scheduled cash forecast alongside historical patrimony.
+The preview includes only generated obligations and card installments, subtracts linked payments
+from outstanding bill/revenue values, and assumes overdue commitments fall today.
+See `endpoints.md` for the additional endpoints and `README.md` for assumptions.

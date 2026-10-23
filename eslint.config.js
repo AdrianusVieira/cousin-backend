@@ -24,6 +24,12 @@ export default [
       "no-undef": "off",
     },
   },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: { process: "readonly", console: "readonly", URL: "readonly", fetch: "readonly", Buffer: "readonly" } },
+    rules: { "no-empty": ["error", { allowEmptyCatch: true }] },
+  },
+  { files: ["integration/**/*.ts"], languageOptions: { parserOptions: { project: null } } },
   prettier,
   {
     ignores: ["dist/", "node_modules/", "*.config.ts", "*.config.js"],

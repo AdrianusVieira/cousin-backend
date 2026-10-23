@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { getWalletForecast } from "./forecast.service.js";
 import {
   createWalletSchema,
   patchWalletSchema,
@@ -14,6 +16,17 @@ import {
 } from "./wallets.service.js";
 
 export async function registerWalletRoutes(app: FastifyInstance) {
+  app.get("/wallets/forecast", async (request) => {
+    const { days } = z
+      .object({
+        days: z.coerce
+          .number()
+          .pipe(z.union([z.literal(30), z.literal(60), z.literal(90)]))
+          .default(30),
+      })
+      .parse(request.query);
+    return getWalletForecast(days);
+  });
   app.get("/wallets", async (request) => {
     const query = walletListQuerySchema.parse(request.query);
     return listWallets(query);

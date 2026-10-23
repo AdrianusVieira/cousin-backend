@@ -10,6 +10,23 @@ import {
 import { createRevenue } from "../modules/revenues/revenues.repository.js";
 
 export async function runRecurrenceWindowJob(): Promise<void> {
+  const lock = await pool.connect();
+  try {
+    const { rows } = await lock.query<{ locked: boolean }>(
+      "select pg_try_advisory_lock(194713, 1) as locked",
+    );
+    if (!rows[0]?.locked) return;
+    try {
+      await runWindow();
+    } finally {
+      await lock.query("select pg_advisory_unlock(194713, 1)");
+    }
+  } finally {
+    lock.release();
+  }
+}
+
+async function runWindow(): Promise<void> {
   const tasks = await findRecurrencesForWindowJob(pool);
   const errors: Array<{ id: string; error: unknown }> = [];
 
@@ -25,9 +42,7 @@ export async function runRecurrenceWindowJob(): Promise<void> {
     for (const { id, error } of errors) {
       console.error(`recurrence-window: failed to process recurrence ${id}`, error);
     }
-    throw new Error(
-      `recurrence-window: ${errors.length} of ${tasks.length} recurrences failed`,
-    );
+    throw new Error(`recurrence-window: ${errors.length} of ${tasks.length} recurrences failed`);
   }
 }
 
@@ -58,8 +73,8 @@ async function processRecurrence(task: WindowJobRow): Promise<void> {
     const common = {
       name: task.template_name ?? "",
       value: task.is_variable
-        ? task.estimated_value ?? task.template_value ?? "0.00"
-        : task.template_value ?? "0.00",
+        ? (task.estimated_value ?? task.template_value ?? "0.00")
+        : (task.template_value ?? "0.00"),
       sourceId: task.template_source_id ?? "",
       description: task.template_description ?? undefined,
       recurrenceId: task.id,

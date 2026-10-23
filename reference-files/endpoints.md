@@ -123,3 +123,16 @@ The wallet-detail transactions table reuses `GET /transactions?wallet=:id`.
 The transaction modal reuses list endpoints with `active=true` rather than bespoke
 endpoints: `GET /wallets?active=true`, `GET /revenues?active=true` (referenceable as
 `from`), `GET /bills?active=true` (referenceable as `to`), `GET /categories?active=true`.
+
+### Cleanup and explanation additions
+
+- New debit/credit transaction creation requires active `categoryId`.
+- Transaction list: `search` (literal description substring), `wallet`, `category` (UUID or `uncategorized`);
+  all filters apply to both items and the complete period summary.
+- `PATCH /transactions/categories` — `{ transactionIds: UUID[1..200], categoryId: UUID }`, returns `{ updated }`;
+  atomic, validates all selected IDs and an active category.
+- `GET /dashboard/details?from&to&metric` — metric `income|outcome|net|savingsRate`;
+  exact contribution rows and aggregate values; dates distinguish counting from purchase and settlement.
+- `GET /wallets/forecast?days=30|60|90` — current active balances plus existing open scheduled flows;
+  returns asOf, days, openingBalance, closingBalance, lowestBalance, lowestDate,
+  firstNegativeDate, daily series and events. Linked payments reduce remaining obligations.

@@ -106,6 +106,7 @@ export interface TransactionListFilter {
   to: string;
   method?: "debit" | "credit" | "all";
   categoryId?: string;
+  search?: string;
   walletId?: string;
   cursor?: { date: string; id: string };
   limit: number;
@@ -122,9 +123,15 @@ export async function findAllTransactions(
     values.push(filter.method);
     conditions.push(`t.method = $${values.length}`);
   }
-  if (filter.categoryId) {
+  if (filter.categoryId === "uncategorized") {
+    conditions.push("t.category_id is null");
+  } else if (filter.categoryId) {
     values.push(filter.categoryId);
     conditions.push(`t.category_id = $${values.length}`);
+  }
+  if (filter.search) {
+    values.push(filter.search);
+    conditions.push(`strpos(lower(coalesce(t.description, '')), lower($${values.length})) > 0`);
   }
   if (filter.walletId) {
     values.push(filter.walletId);
@@ -153,9 +160,10 @@ export async function findAllTransactions(
 export async function findTransactionById(
   db: Pool | PoolClient,
   id: string,
+  lock = false,
 ): Promise<FullTransactionRow | null> {
   const { rows } = await db.query<FullTransactionRow>(
-    `${FULL_TXN_SELECT} where t.id = $1`,
+    `${FULL_TXN_SELECT} where t.id = $1${lock ? " for update of t" : ""}`,
     [id],
   );
   return rows[0] ?? null;
@@ -199,9 +207,15 @@ export async function findTransactionSummary(
     values.push(filter.method);
     conditions.push(`method = $${values.length}`);
   }
-  if (filter.categoryId) {
+  if (filter.categoryId === "uncategorized") {
+    conditions.push("category_id is null");
+  } else if (filter.categoryId) {
     values.push(filter.categoryId);
     conditions.push(`category_id = $${values.length}`);
+  }
+  if (filter.search) {
+    values.push(filter.search);
+    conditions.push(`strpos(lower(coalesce(description, '')), lower($${values.length})) > 0`);
   }
   if (filter.walletId) {
     values.push(filter.walletId);
@@ -307,10 +321,7 @@ export async function updateTransaction(
   }
 
   values.push(id);
-  await db.query(
-    `update transactions set ${sets.join(", ")} where id = $${values.length}`,
-    values,
-  );
+  await db.query(`update transactions set ${sets.join(", ")} where id = $${values.length}`, values);
 }
 
 export async function deleteTransaction(db: Pool | PoolClient, id: string): Promise<void> {
@@ -360,4 +371,15 @@ export async function setTransactionsSettled(
     [ids, settledAt],
   );
   return rows;
+}
+
+export async function setTransactionCategories(
+  db: PoolClient,
+  ids: string[],
+  categoryId: string,
+): Promise<void> {
+  await db.query("update transactions set category_id = $2 where id = any($1::uuid[])", [
+    ids,
+    categoryId,
+  ]);
 }
