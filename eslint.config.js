@@ -32,6 +32,6 @@ export default [
   { files: ["integration/**/*.ts"], languageOptions: { parserOptions: { project: null } } },
   prettier,
   {
-    ignores: ["dist/", "node_modules/", "*.config.ts", "*.config.js"],
+    ignores: [".claude/", "dist/", "node_modules/", "*.config.ts", "*.config.js"],
   },
 ];
